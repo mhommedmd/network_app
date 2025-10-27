@@ -8,7 +8,9 @@
     "[dart]": {
         "editor.formatOnSave": true,
         "editor.formatOnType": true,
-        "editor.rulers": [120],
+        "editor.rulers": [
+            120
+        ],
         "editor.selectionHighlight": false,
         "editor.suggestSelection": "first",
         "editor.tabCompletion": "onlySnippets",
