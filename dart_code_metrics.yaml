@@ -1,0 +1,64 @@
+dart_code_metrics:
+  extends:
+    - package:dart_code_metrics/presets/all.yaml
+  
+  metrics:
+    cyclomatic-complexity: 20
+    maximum-nesting-level: 5
+    number-of-parameters: 8
+    source-lines-of-code: 50
+    
+  metrics-exclude:
+    - test/**
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+    - "**/*.gr.dart"
+    - "**/generated/**"
+    
+  rules:
+    # Style Rules
+    - avoid-dynamic: false
+    - avoid-global-state: false
+    - avoid-missing-enum-constant-in-map: true
+    - avoid-nested-conditional-expressions: true
+    - avoid-throw-in-catch-block: true
+    - avoid-unnecessary-type-assertions: true
+    - avoid-unnecessary-type-casts: true
+    - avoid-unrelated-type-assertions: true
+    - binary-expression-operand-order: true
+    - double-literal-format: true
+    - format-comment: false
+    - member-ordering: false
+    - newline-before-return: false
+    - no-boolean-literal-compare: true
+    - no-empty-block: true
+    - no-equal-then-else: true
+    - no-object-declaration: false
+    - prefer-conditional-expressions: false
+    - prefer-correct-identifier-length: false
+    - prefer-correct-type-name: true
+    - prefer-first: true
+    - prefer-last: true
+    - prefer-match-file-name: false
+    - prefer-moving-to-variable: false
+    - prefer-trailing-comma: false
+    
+    # Flutter specific rules
+    - always-remove-listener: true
+    - avoid-border-all: true
+    - avoid-returning-widgets: false
+    - avoid-shrink-wrap-in-lists: true
+    - avoid-unnecessary-setstate: true
+    - avoid-wrapping-in-padding: true
+    - check-for-equals-in-render-object-setters: true
+    - consistent-update-render-object: true
+    - prefer-const-border-radius: true
+    - prefer-correct-edge-insets-constructor: true
+    - prefer-extracting-callbacks: false
+    - prefer-single-widget-per-file: false
+    - prefer-using-list-view: true
+    - use-setstate-synchronously: true
+    
+  anti-patterns:
+    - long-method
+    - long-parameter-list

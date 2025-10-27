@@ -1,0 +1,9 @@
+# This file ensures the fonts directory is tracked by git
+# Add your font files here:
+# - NotoSansArabic-Regular.ttf
+# - NotoSansArabic-Bold.ttf
+# - NotoSansArabic-Medium.ttf
+# - NotoSansArabic-Light.ttf
+# - Tajawal-Regular.ttf
+# - Tajawal-Bold.ttf
+# - Tajawal-Medium.ttf

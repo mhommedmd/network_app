@@ -1,0 +1,223 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // التحقق من أن المستخدم مسجل دخول
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // قواعد المستخدمين
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAuthenticated() && request.auth.uid == userId;
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // قواعد الباقات
+    match /packages/{packageId} {
+      // السماح بالقراءة لأي مستخدم مسجل دخول
+      allow read: if isAuthenticated();
+      
+      // السماح بالإنشاء لمالك الشبكة فقط
+      allow create: if isAuthenticated() && 
+                       request.resource.data.createdBy == request.auth.uid &&
+                       request.resource.data.networkId == request.auth.uid;
+      
+      // السماح بالتحديث لمالك الشبكة فقط
+      allow update: if isAuthenticated() && 
+                       resource.data.networkId == request.auth.uid;
+      
+      // السماح بالحذف لمالك الشبكة فقط
+      allow delete: if isAuthenticated() && 
+                       resource.data.networkId == request.auth.uid;
+    }
+    
+    // قواعد الكروت
+    match /cards/{cardId} {
+      // السماح بالقراءة لمالك الشبكة أو البائعين المرتبطين
+      allow read: if isAuthenticated() && 
+                    (resource.data.networkId == request.auth.uid || 
+                     resource.data.soldTo == request.auth.uid);
+      
+      // السماح بالإنشاء لمالك الشبكة فقط
+      allow create: if isAuthenticated() && 
+                       request.resource.data.createdBy == request.auth.uid &&
+                       request.resource.data.networkId == request.auth.uid;
+      
+      // السماح بالتحديث لمالك الشبكة فقط
+      allow update: if isAuthenticated() && 
+                       resource.data.networkId == request.auth.uid;
+      
+      // السماح بالحذف لمالك الشبكة فقط
+      allow delete: if isAuthenticated() && 
+                       resource.data.networkId == request.auth.uid;
+    }
+    
+    // قواعد الطلبات
+    match /orders/{orderId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+    
+    // قواعد إعادة تعيين كلمة المرور
+    match /password_reset_requests/{userId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // قواعد المتاجر (vendors) - المتاجر المضافة لكل شبكة
+    match /vendors/{vendorId} {
+      // السماح بالقراءة للمتاجر التابعة للشبكة الحالية
+      allow read: if isAuthenticated() && 
+                     resource.data.networkId == request.auth.uid;
+      
+      // السماح بالإنشاء لمالك الشبكة فقط
+      allow create: if isAuthenticated() && 
+                       request.resource.data.networkId == request.auth.uid;
+      
+      // السماح بالتحديث لمالك الشبكة فقط
+      allow update: if isAuthenticated() && 
+                       resource.data.networkId == request.auth.uid;
+      
+      // السماح بالحذف لمالك الشبكة فقط
+      allow delete: if isAuthenticated() && 
+                       resource.data.networkId == request.auth.uid;
+    }
+    
+    // قواعد المعاملات (transactions)
+    match /transactions/{transactionId} {
+      // السماح بالقراءة لجميع المعاملات (سيتم تصفيتها في الكود بـ where)
+      allow read: if isAuthenticated();
+      
+      // السماح بالإنشاء لمالك الشبكة فقط (التحقق من createdBy)
+      allow create: if isAuthenticated() && 
+                       request.resource.data.createdBy == request.auth.uid;
+      
+      // السماح بالتحديث لمالك الشبكة المرتبط بالمعاملة
+      allow update: if isAuthenticated() && 
+                       resource.data.networkId == request.auth.uid;
+      
+      // السماح بالحذف لمالك الشبكة المرتبط بالمعاملة
+      allow delete: if isAuthenticated() && 
+                       resource.data.networkId == request.auth.uid;
+    }
+    
+    // قواعد طلبات الدفع (payment_requests)
+    match /payment_requests/{requestId} {
+      // السماح بالقراءة لمالك الشبكة أو المتجر المعني
+      allow read: if isAuthenticated();
+      
+      // السماح بالإنشاء لمالك الشبكة فقط
+      allow create: if isAuthenticated() && 
+                       request.resource.data.networkId == request.auth.uid;
+      
+      // السماح بالتحديث للمتجر المعني (لتغيير الحالة)
+      allow update: if isAuthenticated();
+      
+      // السماح بالحذف لمالك الشبكة فقط
+      allow delete: if isAuthenticated() && 
+                       resource.data.networkId == request.auth.uid;
+    }
+    
+    // قواعد الإشعارات (notifications)
+    match /notifications/{notificationId} {
+      // السماح بالقراءة للمستلم فقط
+      allow read: if isAuthenticated();
+      
+      // السماح بالإنشاء لأي مستخدم مسجل
+      allow create: if isAuthenticated();
+      
+      // السماح بالتحديث للمستلم (لتعليمها كمقروءة)
+      allow update: if isAuthenticated();
+      
+      // السماح بالحذف للمستلم
+      allow delete: if isAuthenticated();
+    }
+    
+    // قواعد اتصالات الشبكات (network_connections)
+    match /network_connections/{connectionId} {
+      // السماح بالقراءة للمتجر المالك للاتصال
+      allow read: if isAuthenticated();
+      
+      // السماح بالإنشاء للمتجر فقط
+      allow create: if isAuthenticated() && 
+                       request.resource.data.vendorId == request.auth.uid;
+      
+      // السماح بالتحديث للمتجر المالك
+      allow update: if isAuthenticated() && 
+                       resource.data.vendorId == request.auth.uid;
+      
+      // السماح بالحذف للمتجر المالك
+      allow delete: if isAuthenticated() && 
+                       resource.data.vendorId == request.auth.uid;
+    }
+    
+    // قواعد مخزون المتجر (vendor_cards)
+    match /vendor_cards/{cardId} {
+      // السماح بالقراءة للمتجر المالك
+      allow read: if isAuthenticated() && 
+                     resource.data.vendorId == request.auth.uid;
+      
+      // السماح بالإنشاء للمتجر أو للشبكة (عند نقل الكروت)
+      allow create: if isAuthenticated() && 
+                       (request.resource.data.vendorId == request.auth.uid ||
+                        request.resource.data.networkId == request.auth.uid);
+      
+      // السماح بالتحديث للمتجر المالك أو الشبكة
+      allow update: if isAuthenticated() && 
+                       (resource.data.vendorId == request.auth.uid ||
+                        resource.data.networkId == request.auth.uid);
+      
+      // السماح بالحذف للمتجر المالك
+      allow delete: if isAuthenticated() && 
+                       resource.data.vendorId == request.auth.uid;
+    }
+    
+    // قواعد الطلبات (orders)
+    match /orders/{orderId} {
+      // السماح بالقراءة للشبكة والمتجر المرتبطين بالطلب
+      allow read: if isAuthenticated() && 
+                     (resource.data.networkId == request.auth.uid ||
+                      resource.data.vendorId == request.auth.uid);
+      
+      // السماح بالإنشاء للمتجر فقط
+      allow create: if isAuthenticated() && 
+                       request.resource.data.vendorId == request.auth.uid;
+      
+      // السماح بالتحديث للشبكة فقط (للموافقة/الرفض)
+      allow update: if isAuthenticated() && 
+                       resource.data.networkId == request.auth.uid;
+      
+      // السماح بالحذف للمتجر والشبكة
+      allow delete: if isAuthenticated() && 
+                       (resource.data.networkId == request.auth.uid ||
+                        resource.data.vendorId == request.auth.uid);
+    }
+    
+    // قواعد المبيعات (sales)
+    match /sales/{saleId} {
+      // السماح بالقراءة للشبكة والمتجر المرتبطين بالمبيعة
+      allow read: if isAuthenticated() && 
+                     (resource.data.networkId == request.auth.uid ||
+                      resource.data.vendorId == request.auth.uid);
+      
+      // السماح بالإنشاء للمتجر فقط
+      allow create: if isAuthenticated() && 
+                       request.resource.data.vendorId == request.auth.uid;
+      
+      // السماح بالتحديث للشبكة والمتجر
+      allow update: if isAuthenticated() && 
+                       (resource.data.networkId == request.auth.uid ||
+                        resource.data.vendorId == request.auth.uid);
+      
+      // السماح بالحذف للمتجر والشبكة
+      allow delete: if isAuthenticated() && 
+                       (resource.data.networkId == request.auth.uid ||
+                        resource.data.vendorId == request.auth.uid);
+    }
+  }
+}
+

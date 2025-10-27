@@ -1,0 +1,12 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ⚠️ قواعد التطوير فقط - للاختبار
+    // 🔴 لا تستخدم هذه القواعد في الإنتاج!
+    
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
+
