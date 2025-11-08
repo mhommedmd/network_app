@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
@@ -21,8 +22,7 @@ class AccountsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = context.watch<AuthProvider>();
-    final networkId = authProvider.user?.id ?? '';
+    final networkId = context.select((AuthProvider p) => p.user?.id ?? '');
 
     return ChangeNotifierProvider(
       create: (_) => VendorProvider(networkId),
@@ -68,12 +68,10 @@ class _AccountsPageContentState extends State<_AccountsPageContent> {
       final nameMatch = lowerQuery.isEmpty ||
           vendor.name.toLowerCase().contains(lowerQuery) ||
           vendor.ownerName.toLowerCase().contains(lowerQuery);
-      final governorateMatch = _selectedGovernorate == null ||
-          _selectedGovernorate!.isEmpty ||
-          vendor.governorate == _selectedGovernorate;
-      final districtMatch = _selectedDistrict == null ||
-          _selectedDistrict!.isEmpty ||
-          vendor.district == _selectedDistrict;
+      final governorateMatch =
+          _selectedGovernorate == null || _selectedGovernorate!.isEmpty || vendor.governorate == _selectedGovernorate;
+      final districtMatch =
+          _selectedDistrict == null || _selectedDistrict!.isEmpty || vendor.district == _selectedDistrict;
       return nameMatch && governorateMatch && districtMatch;
     }).toList();
   }
@@ -87,67 +85,22 @@ class _AccountsPageContentState extends State<_AccountsPageContent> {
   }
 
   Future<void> _handleDeleteVendor(VendorModel vendor) async {
-    // عرض تأكيد الحذف
-    final confirmed = await showDialog<bool>(
+    // حذف المتجر مباشرة (الحوار معروض من Dismissible)
+    final vendorProvider = context.read<VendorProvider>();
+
+    // عرض مؤشر تحميل
+    showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('حذف المتجر'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('هل تريد حذف "${vendor.name}" من قائمة المتاجر؟'),
-            SizedBox(height: 12.h),
-            Container(
-              padding: EdgeInsets.all(12.w),
-              decoration: BoxDecoration(
-                color: AppColors.warningLight.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(8.r),
-                border: Border.all(color: AppColors.warning),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.warning_amber_rounded,
-                      color: AppColors.warningDark, size: 20.w),
-                  SizedBox(width: 8.w),
-                  Expanded(
-                    child: Text(
-                      'سيتم حذف جميع البيانات المرتبطة بهذا المتجر',
-                      style: TextStyle(
-                        fontSize: 12.sp,
-                        color: AppColors.warningDark,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('إلغاء'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('حذف'),
-          ),
-        ],
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
       ),
     );
 
-    if (confirmed != true) return;
-
-    // حذف المتجر
-    final vendorProvider = context.read<VendorProvider>();
-    final success = await vendorProvider.deleteVendor(vendor.id);
+    final success = await vendorProvider.deleteVendor(vendor.realUserId);
 
     if (!mounted) return;
+    Navigator.of(context).pop(); // إغلاق مؤشر التحميل
 
     if (success) {
       CustomToast.success(
@@ -218,8 +171,7 @@ class _AccountsPageContentState extends State<_AccountsPageContent> {
                           childAspectRatio: 2.4,
                         ),
                         itemCount: 6,
-                        itemBuilder: (context, i) =>
-                            const SkeletonCardWithIcon(),
+                        itemBuilder: (context, i) => const SkeletonCardWithIcon(),
                       );
                     },
                   ),
@@ -273,36 +225,31 @@ class _AccountsPageContentState extends State<_AccountsPageContent> {
                           color: AppColors.primary,
                           child: filteredVendors.isEmpty
                               ? SingleChildScrollView(
-                                  physics:
-                                      const AlwaysScrollableScrollPhysics(),
+                                  physics: const AlwaysScrollableScrollPhysics(),
                                   child: SizedBox(
-                                    height: MediaQuery.of(context).size.height *
-                                        0.5,
+                                    height: MediaQuery.of(context).size.height * 0.5,
                                     child: _buildEmptyState(),
                                   ),
                                 )
                               : LayoutBuilder(
                                   builder: (context, constraints) {
                                     final cols = _calcCrossAxisCount(
-                                        constraints.maxWidth);
+                                      constraints.maxWidth,
+                                    );
                                     return GridView.builder(
-                                      gridDelegate:
-                                          SliverGridDelegateWithFixedCrossAxisCount(
+                                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                                         crossAxisCount: cols,
-                                        mainAxisSpacing: 10.h,
-                                        crossAxisSpacing: 10.w,
-                                        childAspectRatio: 2.4,
+                                        mainAxisSpacing: 12.h,
+                                        crossAxisSpacing: 12.w,
+                                        childAspectRatio: 2.8, // نسبة للتصميم المختصر
                                       ),
                                       itemCount: filteredVendors.length,
                                       itemBuilder: (context, i) {
                                         final vendor = filteredVendors[i];
                                         return _VendorTile(
                                           vendor: vendor,
-                                          onTap: () => widget
-                                              .onViewMerchantTransactions
-                                              ?.call(vendor.id),
-                                          onDelete: () =>
-                                              _handleDeleteVendor(vendor),
+                                          onTap: () => widget.onViewMerchantTransactions?.call(vendor.realUserId),
+                                          onDelete: () => _handleDeleteVendor(vendor),
                                         );
                                       },
                                     );
@@ -348,9 +295,7 @@ class _AccountsPageContentState extends State<_AccountsPageContent> {
             ),
             SizedBox(height: 8.h),
             Text(
-              _searchQuery.isEmpty
-                  ? 'اضغط على أيقونة البحث لإضافة متاجر جديدة'
-                  : 'جرب البحث بكلمات مختلفة',
+              _searchQuery.isEmpty ? 'اضغط على أيقونة البحث لإضافة متاجر جديدة' : 'جرب البحث بكلمات مختلفة',
               style: TextStyle(
                 fontSize: 14.sp,
                 color: AppColors.gray500,
@@ -364,7 +309,7 @@ class _AccountsPageContentState extends State<_AccountsPageContent> {
   }
 }
 
-class _VendorTile extends StatelessWidget {
+class _VendorTile extends StatefulWidget {
   const _VendorTile({
     required this.vendor,
     this.onTap,
@@ -375,155 +320,150 @@ class _VendorTile extends StatelessWidget {
   final VoidCallback? onDelete;
 
   @override
+  State<_VendorTile> createState() => _VendorTileState();
+}
+
+class _VendorTileState extends State<_VendorTile> {
+  @override
   Widget build(BuildContext context) {
-    return AppCard(
-      onTap: onTap,
-      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 2.h),
-      child: Stack(
-        children: [
-          Row(
-            textDirection:
-                TextDirection.ltr, // إبقاء الرصيد في أقصى اليسار بصريًا
-            children: [
-              // لوحة الرصيد + المخزون (يسار الكرت)
-              SizedBox(
-                width: 96.w,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+    return StreamBuilder<Map<String, dynamic>>(
+      stream: _getVendorRealTimeData(),
+      builder: (context, snapshot) {
+        // استخدام البيانات الفعلية من Firebase أو البيانات المخزنة
+        final realBalance = (snapshot.data?['balance'] as num?)?.toDouble() ?? widget.vendor.balance;
+        final realStock = (snapshot.data?['stock'] as int?) ?? widget.vendor.stock;
+
+        return Dismissible(
+          key: Key(widget.vendor.id), // استخدام document ID (composite) للـ key
+          direction: DismissDirection.endToStart,
+          confirmDismiss: (direction) async {
+            if (widget.onDelete == null) return false;
+
+            // عرض حوار تأكيد للمتاجر
+            final confirmed = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: Row(
                   children: [
-                    // الرصيد
-                    Text(
-                      'الرصيد',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 11.sp,
-                        color: AppColors.gray600,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    SizedBox(height: 2.h),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          vendor.balance.toInt().toString(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 16.sp,
-                            fontWeight: FontWeight.w800,
-                            color: vendor.balance >= 0
-                                ? AppColors.success
-                                : AppColors.error,
-                          ),
-                        ),
-                        SizedBox(width: 4.w),
-                        Text(
-                          'ر.ي',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 11.sp,
-                            color: AppColors.gray500,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                    // فاصل بين الرصيد والمخزون
-                    Padding(
-                      padding: EdgeInsets.symmetric(vertical: 6.h),
-                      child: Container(
-                        height: 1,
-                        width: double.infinity,
-                        color: AppColors.gray200,
-                      ),
-                    ),
-                    // المخزون
-                    Text(
-                      'المخزون',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 11.sp,
-                        color: AppColors.gray600,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    SizedBox(height: 2.h),
-                    Text(
-                      vendor.stock.toString(),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.gray800,
-                      ),
-                    ),
+                    Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 24.w),
+                    SizedBox(width: 8.w),
+                    const Text('حذف المتجر'),
                   ],
                 ),
+                content: Text(
+                  'هل تريد حذف "${widget.vendor.name}" من قائمة المتاجر؟\n\nسيتم حذف جميع البيانات المرتبطة.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('إلغاء'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.error,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('حذف'),
+                  ),
+                ],
               ),
-              SizedBox(width: 10.w),
-              // معلومات المتجر
-              Expanded(
+            );
+
+            if (confirmed ?? false) {
+              widget.onDelete!();
+            }
+            return false;
+          },
+          background: Container(
+            alignment: Alignment.centerLeft,
+            padding: EdgeInsets.only(left: 20.w),
+            decoration: BoxDecoration(
+              color: AppColors.error,
+              borderRadius: BorderRadius.circular(12.r),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.delete_forever, color: Colors.white, size: 28.w),
+                SizedBox(width: 8.w),
+                Text(
+                  'حذف',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          child: Material(
+            color: Colors.white,
+            elevation: 1,
+            borderRadius: BorderRadius.circular(12.r),
+            child: InkWell(
+              onTap: widget.onTap,
+              borderRadius: BorderRadius.circular(12.r),
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Row(
                       children: [
-                        // الصورة الرمزية
                         Container(
-                          width: 38.w,
-                          height: 38.w,
+                          width: 44.w,
+                          height: 44.w,
                           decoration: BoxDecoration(
-                            color: AppColors.blue100,
-                            borderRadius: BorderRadius.circular(8.r),
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                AppColors.primary,
+                                AppColors.primaryDark,
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(12.r),
                           ),
                           child: Center(
                             child: Text(
-                              vendor.avatar,
+                              widget.vendor.avatar,
                               style: TextStyle(
-                                fontSize: 14.sp,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.primary,
+                                fontSize: 18.sp,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
                               ),
                             ),
                           ),
                         ),
-                        SizedBox(width: 10.w),
-                        // الاسم والمالك
+                        SizedBox(width: 12.w),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                vendor.name,
-                                overflow: TextOverflow.ellipsis,
+                                widget.vendor.name,
                                 style: TextStyle(
-                                  fontSize: 13.sp,
+                                  fontSize: 14.sp,
                                   fontWeight: FontWeight.w700,
                                   color: AppColors.gray900,
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              SizedBox(height: 2.h),
+                              SizedBox(height: 3.h),
                               Row(
                                 children: [
-                                  const Icon(
-                                    Icons.person,
-                                    size: 14,
-                                    color: AppColors.gray500,
-                                  ),
+                                  Icon(Icons.person_outline, size: 12.w, color: AppColors.gray500),
                                   SizedBox(width: 4.w),
                                   Expanded(
                                     child: Text(
-                                      vendor.ownerName,
+                                      widget.vendor.ownerName,
+                                      style: TextStyle(fontSize: 11.sp, color: AppColors.gray600),
+                                      maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 12.sp,
-                                        color: AppColors.gray700,
-                                      ),
                                     ),
                                   ),
                                 ],
@@ -531,65 +471,135 @@ class _VendorTile extends StatelessWidget {
                             ],
                           ),
                         ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '${realBalance >= 0 ? '+' : ''}${realBalance.toStringAsFixed(0)}',
+                                  style: TextStyle(
+                                    fontSize: 14.sp,
+                                    fontWeight: FontWeight.w700,
+                                    color: realBalance > 0 ? AppColors.error : AppColors.success,
+                                  ),
+                                ),
+                                SizedBox(width: 4.w),
+                                Text(
+                                  'ر.ي',
+                                  style: TextStyle(
+                                    fontSize: 11.sp,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.gray600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 4.h),
+                            Container(
+                              padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+                              decoration: BoxDecoration(
+                                color: AppColors.blue100,
+                                borderRadius: BorderRadius.circular(8.r),
+                              ),
+                              child: Text(
+                                '$realStock كرت',
+                                style: TextStyle(
+                                  fontSize: 9.sp,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.blue700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
-                    SizedBox(height: 4.h),
-                    // الهاتف والموقع
+                    SizedBox(height: 10.h),
                     Row(
                       children: [
-                        const Icon(Icons.phone,
-                            size: 14, color: AppColors.gray500),
-                        SizedBox(width: 4.w),
+                        Icon(Icons.phone, size: 13.w, color: AppColors.gray500),
+                        SizedBox(width: 5.w),
                         Text(
-                          vendor.phone,
-                          style: TextStyle(
-                              fontSize: 12.sp, color: AppColors.gray700),
+                          widget.vendor.phone,
+                          style: TextStyle(fontSize: 11.5.sp, color: AppColors.gray700),
                         ),
-                        SizedBox(width: 8.w),
-                        const Icon(Icons.place,
-                            size: 14, color: AppColors.gray500),
-                        SizedBox(width: 4.w),
+                      ],
+                    ),
+                    SizedBox(height: 6.h),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.location_on_outlined, size: 13.w, color: AppColors.gray500),
+                        SizedBox(width: 5.w),
                         Expanded(
                           child: Text(
-                            vendor.location,
+                            '${widget.vendor.governorate}${widget.vendor.district.isNotEmpty ? ' • ${widget.vendor.district}' : ''}${widget.vendor.address.isNotEmpty ? ' • ${widget.vendor.address}' : ''}',
+                            style: TextStyle(fontSize: 11.5.sp, color: AppColors.gray700),
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12.sp,
-                              color: AppColors.gray700,
-                            ),
                           ),
                         ),
                       ],
                     ),
-                    // تمت إزالة شارة المخزون من يمين الكرت (نقلناها لليسار)
                   ],
                 ),
               ),
-            ],
-          ),
-          // زر الحذف
-          if (onDelete != null)
-            Positioned(
-              top: 0,
-              left: 0,
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: onDelete,
-                  borderRadius: BorderRadius.circular(20.r),
-                  child: Container(
-                    padding: EdgeInsets.all(6.w),
-                    child: Icon(
-                      Icons.delete_outline,
-                      size: 18.w,
-                      color: AppColors.error,
-                    ),
-                  ),
-                ),
-              ),
             ),
-        ],
-      ),
+          ),
+        );
+      },
     );
+  }
+
+  /// جلب البيانات الفعلية للمتجر (الرصيد والمخزون)
+  Stream<Map<String, dynamic>> _getVendorRealTimeData() {
+    // مراقبة تغييرات المعاملات لحساب الرصيد الفعلي
+    return FirebaseFirestore.instance
+        .collection('transactions')
+        .where('networkId', isEqualTo: widget.vendor.networkId)
+        .where('vendorId', isEqualTo: widget.vendor.realUserId)
+        .where('status', isEqualTo: 'completed')
+        .snapshots()
+        .asyncMap((transactionsSnapshot) async {
+      // حساب الرصيد من المعاملات
+      double totalCharges = 0; // المستحقات (موجب)
+      double totalPayments = 0; // المدفوعات (سالب)
+
+      for (final doc in transactionsSnapshot.docs) {
+        final data = doc.data();
+        final amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
+        final type = data['type'] as String?;
+
+        // دعم المعاملات القديمة والجديدة
+        if (type == 'cash_payment_received') {
+          // معاملات قديمة: مبلغ موجب ولكنها دفعات
+          totalPayments += amount.abs();
+        } else if (amount > 0) {
+          // موجب = مستحقات (charge, fee)
+          totalCharges += amount;
+        } else if (amount < 0) {
+          // سالب = مدفوعات (payment, refund)
+          totalPayments += amount.abs();
+        }
+      }
+
+      // الرصيد = المستحقات - المدفوعات
+      final balance = totalCharges - totalPayments;
+
+      // حساب المخزون الفعلي من vendor_cards
+      final cardsSnapshot = await FirebaseFirestore.instance
+          .collection('vendor_cards')
+          .where('vendorId', isEqualTo: widget.vendor.realUserId)
+          .where('networkId', isEqualTo: widget.vendor.networkId)
+          .where('status', isEqualTo: 'available')
+          .get();
+
+      final stock = cardsSnapshot.docs.length;
+
+      return {'balance': balance, 'stock': stock};
+    });
   }
 }

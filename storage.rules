@@ -1,0 +1,28 @@
+rules_version = '2';
+
+// Firebase Storage Security Rules
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // قواعد صور البروفايل
+    match /profile_images/{imageId} {
+      // السماح بالقراءة للجميع (مصادق أو غير مصادق)
+      allow read: if true;
+      
+      // السماح بالكتابة للمستخدمين المصادق عليهم فقط
+      // التحقق من حجم الصورة (أقل من 5 MB) ونوع الملف (صورة فقط)
+      allow create, update: if request.auth != null 
+                            && request.resource.size < 5 * 1024 * 1024
+                            && request.resource.contentType.matches('image/.*');
+      
+      // السماح بالحذف للمستخدمين المصادق عليهم
+      allow delete: if request.auth != null;
+    }
+    
+    // قواعد افتراضية: رفض الوصول للمسارات الأخرى
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+

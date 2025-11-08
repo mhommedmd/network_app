@@ -20,23 +20,33 @@ import '../../data/services/firebase_vendor_inventory_service.dart';
 import '../../data/services/firebase_vendor_transaction_service.dart';
 import 'send_order_page.dart';
 
-typedef NetworkActionCallback = void Function(int id);
+typedef NetworkActionCallback = void Function(String networkId, String? networkName);
 
-// مساعد لتحليل الألوان
+// مساعد لتحليل الألوان - مع caching للأداء
 class ColorParser {
+  static final Map<String, Color?> _cache = {};
+  
+  static const _colorMap = <String, Color>{
+    'blue': AppColors.primary,
+    'green': AppColors.success,
+    'orange': AppColors.warning,
+    'red': AppColors.error,
+    'purple': Colors.purple,
+    'teal': Colors.teal,
+  };
+
   static Color? tryParse(String? colorString) {
     if (colorString == null || colorString.isEmpty) return null;
-
-    final colorMap = <String, Color>{
-      'blue': AppColors.primary,
-      'green': AppColors.success,
-      'orange': AppColors.warning,
-      'red': AppColors.error,
-      'purple': Colors.purple,
-      'teal': Colors.teal,
-    };
-
-    return colorMap[colorString.toLowerCase()];
+    
+    // استخدام cache للألوان المحولة
+    final key = colorString.toLowerCase();
+    if (_cache.containsKey(key)) {
+      return _cache[key];
+    }
+    
+    final color = _colorMap[key];
+    _cache[key] = color;
+    return color;
   }
 }
 
@@ -44,13 +54,15 @@ class NetworkDetailsPage extends StatefulWidget {
   const NetworkDetailsPage({
     required this.networkId,
     this.networkOwnerId,
+    this.networkName,
     super.key,
     this.onBack,
     this.onSendOrder,
     this.onOpenChat,
   });
-  final int networkId;
+  final String networkId;
   final String? networkOwnerId;
+  final String? networkName;
   final VoidCallback? onBack;
   final NetworkActionCallback? onSendOrder;
   final NetworkActionCallback? onOpenChat;
@@ -76,10 +88,9 @@ class _NetworkDetailsPageState extends State<NetworkDetailsPage>
   }
 
   void _handleSendOrder() {
-    // التحقق من وجود networkOwnerId
-    final networkOwnerId = widget.networkOwnerId;
+    final networkOwnerId = widget.networkOwnerId ?? widget.networkId;
 
-    if (networkOwnerId == null || networkOwnerId.isEmpty) {
+    if (networkOwnerId.isEmpty) {
       CustomToast.error(
         context,
         'يرجى التأكد من الاتصال بالشبكة',
@@ -88,13 +99,18 @@ class _NetworkDetailsPageState extends State<NetworkDetailsPage>
       return;
     }
 
-    // الانتقال إلى صفحة إرسال الطلب
+    // استدعاء الـ callback إن وجد (مثلاً عند الاستخدام داخل MainLayout)
+    if (widget.onSendOrder != null) {
+      widget.onSendOrder!(networkOwnerId, widget.networkName);
+      return;
+    }
+
+    // خلاف ذلك، ننتقل إلى صفحة إرسال الطلب التقليدية
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => SendOrderPage(
           networkId: networkOwnerId,
-          networkName:
-              'الشبكة', // يمكن تمرير اسم الشبكة من NetworkConnectionModel
+          networkName: widget.networkName ?? 'الشبكة',
         ),
       ),
     );
@@ -113,8 +129,8 @@ class _NetworkDetailsPageState extends State<NetworkDetailsPage>
   @override
   Widget build(BuildContext context) {
     // استخدام networkOwnerId للحصول على الباقات
-    // إذا لم يكن موجوداً، نستخدم networkId.toString()
-    final networkOwnerId = widget.networkOwnerId ?? widget.networkId.toString();
+    // إذا لم يكن موجوداً، نستخدم networkId ذاته (تم تمريره كسلسلة)
+    final networkOwnerId = widget.networkOwnerId ?? widget.networkId;
 
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
@@ -208,11 +224,10 @@ class _NetworkDetailsPageState extends State<NetworkDetailsPage>
   }
 
   Widget _buildPackagesTab(String networkOwnerId) {
-    final authProvider = context.watch<AuthProvider>();
-    final vendorId = authProvider.user?.id ?? '';
+    final vendorId = context.read<AuthProvider>().user?.id ?? '';
 
     return StreamBuilder<List<PackageModel>>(
-      stream: FirebasePackageService.getPackagesByNetwork(networkOwnerId),
+      stream: FirebasePackageService.getActivePackagesByNetwork(networkOwnerId),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return SingleChildScrollView(
@@ -271,7 +286,7 @@ class _NetworkDetailsPageState extends State<NetworkDetailsPage>
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(Icons.inventory_outlined,
-                                size: 64.w, color: AppColors.gray400),
+                                size: 64.w, color: AppColors.gray400,),
                             SizedBox(height: 16.h),
                             Text(
                               'لا توجد باقات',
@@ -285,7 +300,7 @@ class _NetworkDetailsPageState extends State<NetworkDetailsPage>
                             Text(
                               'هذه الشبكة لم تضف أي باقات بعد',
                               style: TextStyle(
-                                  fontSize: 14.sp, color: AppColors.gray600),
+                                  fontSize: 14.sp, color: AppColors.gray600,),
                               textAlign: TextAlign.center,
                             ),
                           ],
@@ -305,7 +320,7 @@ class _NetworkDetailsPageState extends State<NetworkDetailsPage>
                     return SingleChildScrollView(
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: EdgeInsets.symmetric(
-                          horizontal: 20.w, vertical: 16.h),
+                          horizontal: 20.w, vertical: 16.h,),
                       child: Column(
                         children: packages.asMap().entries.map((entry) {
                           final index = entry.key;
@@ -332,8 +347,6 @@ class _NetworkDetailsPageState extends State<NetworkDetailsPage>
                                     .values[index % PackageType.values.length],
                                 accentColor: ColorParser.tryParse(pkg.color),
                               ),
-                              // لا نحتاج onEdit هنا لأن المتجر لا يستطيع تعديل باقات الشبكة
-                              onEdit: null,
                             ),
                           );
                         }).toList(),
@@ -347,9 +360,8 @@ class _NetworkDetailsPageState extends State<NetworkDetailsPage>
   }
 
   Widget _buildTransactionsTab() {
-    final authProvider = context.watch<AuthProvider>();
-    final vendorId = authProvider.user?.id ?? '';
-    final networkOwnerId = widget.networkOwnerId ?? widget.networkId.toString();
+    final vendorId = context.read<AuthProvider>().user?.id ?? '';
+    final networkOwnerId = widget.networkOwnerId ?? widget.networkId;
 
     if (vendorId.isEmpty) {
       return const Center(child: Text('معلومات المستخدم غير متوفرة'));
@@ -371,17 +383,17 @@ class _NetworkDetailsPageState extends State<NetworkDetailsPage>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SkeletonLine(width: 80, height: 12),
+                      const SkeletonLine(width: 80),
                       SizedBox(height: 6.h),
                       const SkeletonLine(width: 120, height: 24),
                       SizedBox(height: 12.h),
                       Row(
                         children: [
-                          Expanded(
+                          const Expanded(
                             child: SkeletonBox(height: 70, borderRadius: 10),
                           ),
                           SizedBox(width: 10.w),
-                          Expanded(
+                          const Expanded(
                             child: SkeletonBox(height: 70, borderRadius: 10),
                           ),
                         ],
@@ -466,7 +478,7 @@ class _NetworkDetailsPageState extends State<NetworkDetailsPage>
                         Text(
                           'الرصيد الحالي',
                           style: TextStyle(
-                              fontSize: 12.sp, color: AppColors.gray600),
+                              fontSize: 12.sp, color: AppColors.gray600,),
                         ),
                         SizedBox(height: 6.h),
                         Row(
@@ -477,21 +489,66 @@ class _NetworkDetailsPageState extends State<NetworkDetailsPage>
                               style: TextStyle(
                                 fontSize: 24.sp,
                                 fontWeight: FontWeight.w700,
-                                color: balance >= 0
-                                    ? AppColors.success
-                                    : AppColors.error,
+                                color: balance > 0
+                                    ? AppColors.error
+                                    : AppColors.success,
                               ),
                             ),
                             Text(
                               CurrencyFormatter.symbol,
                               style: TextStyle(
-                                  fontSize: 12.sp, color: AppColors.gray500),
+                                  fontSize: 12.sp, color: AppColors.gray500,),
                             ),
                           ],
                         ),
                         SizedBox(height: 12.h),
                         Row(
                           children: [
+                            Expanded(
+                              child: Container(
+                                padding: EdgeInsets.symmetric(
+                                  vertical: 10.h,
+                                  horizontal: 12.w,
+                                ),
+                                decoration: BoxDecoration(
+                                  color:
+                                      AppColors.error.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(10.r),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.trending_down,
+                                          size: 14.w,
+                                          color: AppColors.error,
+                                        ),
+                                        SizedBox(width: 6.w),
+                                        Text(
+                                          'المستحقات',
+                                          style: TextStyle(
+                                            fontSize: 11.sp,
+                                            color: AppColors.gray600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    SizedBox(height: 4.h),
+                                    Text(
+                                      _formatNumber(totalCharges),
+                                      style: TextStyle(
+                                        fontSize: 14.sp,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.error,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: 10.w),
                             Expanded(
                               child: Container(
                                 padding: EdgeInsets.symmetric(
@@ -515,51 +572,6 @@ class _NetworkDetailsPageState extends State<NetworkDetailsPage>
                                         ),
                                         SizedBox(width: 6.w),
                                         Text(
-                                          'المستحقات',
-                                          style: TextStyle(
-                                            fontSize: 11.sp,
-                                            color: AppColors.gray600,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    SizedBox(height: 4.h),
-                                    Text(
-                                      _formatNumber(totalCharges),
-                                      style: TextStyle(
-                                        fontSize: 14.sp,
-                                        fontWeight: FontWeight.w600,
-                                        color: AppColors.successDark,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            SizedBox(width: 10.w),
-                            Expanded(
-                              child: Container(
-                                padding: EdgeInsets.symmetric(
-                                  vertical: 10.h,
-                                  horizontal: 12.w,
-                                ),
-                                decoration: BoxDecoration(
-                                  color:
-                                      AppColors.primary.withValues(alpha: 0.08),
-                                  borderRadius: BorderRadius.circular(10.r),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.trending_down,
-                                          size: 14.w,
-                                          color: AppColors.primary,
-                                        ),
-                                        SizedBox(width: 6.w),
-                                        Text(
                                           'المدفوعات',
                                           style: TextStyle(
                                             fontSize: 11.sp,
@@ -574,7 +586,7 @@ class _NetworkDetailsPageState extends State<NetworkDetailsPage>
                                       style: TextStyle(
                                         fontSize: 14.sp,
                                         fontWeight: FontWeight.w600,
-                                        color: AppColors.primaryDark,
+                                        color: AppColors.success,
                                       ),
                                     ),
                                   ],
@@ -635,7 +647,7 @@ class _NetworkDetailsPageState extends State<NetworkDetailsPage>
                           Text(
                             'لم يتم تسجيل أي معاملات بعد',
                             style: TextStyle(
-                                fontSize: 12.sp, color: AppColors.gray600),
+                                fontSize: 12.sp, color: AppColors.gray600,),
                           ),
                         ],
                       ),
@@ -662,11 +674,12 @@ class _TransactionRow extends StatelessWidget {
   final VendorTransactionModel transaction;
 
   IconData _getTypeIcon() {
-    // تحويل isDebit إلى type
+    // payment (دفعة نقدية) = أخضر / موجب
+    // charge (طلب كروت) = أحمر / سالب
     if (transaction.isDebit) {
-      return Icons.trending_up; // charge/مستحقات
+      return Icons.trending_down; // charge/سالب
     } else {
-      return Icons.trending_down; // payment/مدفوعات
+      return Icons.trending_up; // payment/موجب
     }
   }
 
@@ -677,8 +690,11 @@ class _TransactionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isPositive = !transaction.isDebit; // المدفوعات سالبة، المستحقات موجبة
-    final amountColor = isPositive ? AppColors.success : AppColors.error;
+    // المنطق الجديد:
+    // charge (طلب كروت) = سالب/أحمر
+    // payment (دفعة نقدية) = موجب/أخضر
+    final isPayment = !transaction.isDebit; // payment = true, charge = false
+    final amountColor = isPayment ? AppColors.success : AppColors.error;
 
     return AppCard(
       child: Row(
@@ -724,7 +740,7 @@ class _TransactionRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '${isPositive ? '+' : ''}${_formatNumber(transaction.amount)}',
+                '${isPayment ? '+' : '-'}${_formatNumber(transaction.amount)}',
                 style: TextStyle(
                   fontSize: 15.sp,
                   fontWeight: FontWeight.w700,

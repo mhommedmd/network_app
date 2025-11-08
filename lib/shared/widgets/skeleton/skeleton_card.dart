@@ -15,7 +15,7 @@ class SkeletonCard extends StatelessWidget {
         children: [
           const SkeletonLine(width: 150, height: 16),
           SizedBox(height: 8.h),
-          const SkeletonLine(width: 100, height: 12),
+          const SkeletonLine(width: 100),
         ],
       ),
     );
@@ -39,7 +39,7 @@ class SkeletonCardWithIcon extends StatelessWidget {
               children: [
                 const SkeletonLine(width: 120, height: 14),
                 SizedBox(height: 6.h),
-                const SkeletonLine(width: 80, height: 12),
+                const SkeletonLine(width: 80),
               ],
             ),
           ),
@@ -111,15 +111,15 @@ class SkeletonPackageCard extends StatelessWidget {
             ],
           ),
           SizedBox(height: 12.h),
-          const SkeletonLine(width: double.infinity, height: 12),
+          const SkeletonLine(width: double.infinity),
           SizedBox(height: 6.h),
-          const SkeletonLine(width: 150, height: 12),
+          const SkeletonLine(width: 150),
           SizedBox(height: 12.h),
           Row(
             children: [
-              const Expanded(child: SkeletonLine(height: 12)),
+              const Expanded(child: SkeletonLine()),
               SizedBox(width: 12.w),
-              const Expanded(child: SkeletonLine(height: 12)),
+              const Expanded(child: SkeletonLine()),
             ],
           ),
         ],
@@ -143,14 +143,14 @@ class SkeletonOrderCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  const SkeletonCircle(size: 40),
+                  const SkeletonCircle(),
                   SizedBox(width: 12.w),
                   const Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       SkeletonLine(width: 100, height: 14),
                       SizedBox(height: 6),
-                      SkeletonLine(width: 80, height: 12),
+                      SkeletonLine(width: 80),
                     ],
                   ),
                 ],
@@ -165,9 +165,9 @@ class SkeletonOrderCard extends StatelessWidget {
           SizedBox(height: 12.h),
           const Divider(),
           SizedBox(height: 8.h),
-          const SkeletonLine(width: 120, height: 12),
+          const SkeletonLine(width: 120),
           SizedBox(height: 6.h),
-          const SkeletonLine(width: 90, height: 12),
+          const SkeletonLine(width: 90),
         ],
       ),
     );

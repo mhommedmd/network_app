@@ -5,9 +5,7 @@ import '../../../core/theme/app_colors.dart';
 /// Widget لإضافة Pull-to-Refresh بسهولة
 class PullToRefreshWrapper extends StatelessWidget {
   const PullToRefreshWrapper({
-    super.key,
-    required this.onRefresh,
-    required this.child,
+    required this.onRefresh, required this.child, super.key,
     this.color,
     this.backgroundColor,
   });
@@ -23,7 +21,7 @@ class PullToRefreshWrapper extends StatelessWidget {
       onRefresh: onRefresh,
       color: color ?? AppColors.primary,
       backgroundColor: backgroundColor ?? Colors.white,
-      strokeWidth: 3.0,
+      strokeWidth: 3,
       displacement: 60.h,
       child: child,
     );
@@ -33,9 +31,7 @@ class PullToRefreshWrapper extends StatelessWidget {
 /// Widget لإضافة Pull-to-Refresh مع رسالة مخصصة
 class PullToRefreshWithMessage extends StatefulWidget {
   const PullToRefreshWithMessage({
-    super.key,
-    required this.onRefresh,
-    required this.child,
+    required this.onRefresh, required this.child, super.key,
     this.refreshMessage = 'جاري التحديث...',
     this.color,
   });
@@ -73,7 +69,7 @@ class _PullToRefreshWithMessageState extends State<PullToRefreshWithMessage> {
           onRefresh: _handleRefresh,
           color: widget.color ?? AppColors.primary,
           backgroundColor: Colors.white,
-          strokeWidth: 3.0,
+          strokeWidth: 3,
           displacement: 60.h,
           child: widget.child,
         ),
@@ -90,7 +86,7 @@ class _PullToRefreshWithMessageState extends State<PullToRefreshWithMessage> {
                   borderRadius: BorderRadius.circular(20.r),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: Colors.black.withValues(alpha: 0.1),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),

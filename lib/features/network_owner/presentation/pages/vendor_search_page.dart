@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
@@ -29,6 +31,7 @@ class _VendorSearchPageState extends State<VendorSearchPage> {
   List<VendorModel> _searchResults = [];
   bool _isLoading = false;
   bool _isSearching = false;
+  Timer? _debounce;
 
   @override
   void initState() {
@@ -38,8 +41,18 @@ class _VendorSearchPageState extends State<VendorSearchPage> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  // دالة للبحث مع debouncing لتحسين الأداء
+  void _onSearchChanged(String value) {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      _performSearch();
+    });
   }
 
   Future<void> _loadGovernorates() async {
@@ -51,7 +64,7 @@ class _VendorSearchPageState extends State<VendorSearchPage> {
         _governorates = governorates;
         _isLoading = false;
       });
-    } catch (e) {
+    } on Exception catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
         final errorMessage = ErrorHandler.extractErrorMessage(e);
@@ -76,7 +89,7 @@ class _VendorSearchPageState extends State<VendorSearchPage> {
           _selectedDistrict = null;
         }
       });
-    } catch (e) {
+    } on Exception catch (e) {
       if (mounted) {
         final errorMessage = ErrorHandler.extractErrorMessage(e);
         CustomToast.error(
@@ -108,7 +121,7 @@ class _VendorSearchPageState extends State<VendorSearchPage> {
         _searchResults = results;
         _isSearching = false;
       });
-    } catch (e) {
+    } on Exception catch (e) {
       setState(() => _isSearching = false);
       if (mounted) {
         final errorMessage = ErrorHandler.extractErrorMessage(e);
@@ -144,6 +157,7 @@ class _VendorSearchPageState extends State<VendorSearchPage> {
     // إنشاء نسخة من المتجر مع معرف الشبكة الحالي
     final newVendor = VendorModel(
       id: vendor.id, // استخدام user ID من users collection
+      userId: vendor.id, // userId الحقيقي للمتجر
       name: vendor.name,
       ownerName: vendor.ownerName,
       phone: vendor.phone,
@@ -159,15 +173,8 @@ class _VendorSearchPageState extends State<VendorSearchPage> {
     );
 
     try {
-      print('🔄 محاولة إضافة المتجر: ${vendor.name}');
-      print('   - Network ID: $networkId');
-      print('   - User ID من users collection: ${vendor.id}');
-      print('   - Vendor Data: ${newVendor.toJson()}');
-
       // استخدام FirebaseVendorService مباشرة
       await FirebaseVendorService.addVendor(newVendor);
-
-      print('✅ تمت إضافة المتجر بنجاح');
 
       if (!mounted) return;
       Navigator.of(context).pop(); // إغلاق مؤشر التحميل
@@ -182,9 +189,7 @@ class _VendorSearchPageState extends State<VendorSearchPage> {
       setState(() {
         _searchResults.removeWhere((v) => v.id == vendor.id);
       });
-    } catch (e) {
-      print('❌ فشل إضافة المتجر: $e');
-
+    } on Exception catch (e) {
       if (!mounted) return;
       Navigator.of(context).pop(); // إغلاق مؤشر التحميل
 
@@ -228,7 +233,7 @@ class _VendorSearchPageState extends State<VendorSearchPage> {
                 padding: EdgeInsets.all(16.w),
                 child: Column(
                   children: [
-                    // حقل البحث
+                    // حقل البحث مع debouncing للأداء
                     TextField(
                       controller: _searchController,
                       textDirection: TextDirection.rtl,
@@ -241,13 +246,13 @@ class _VendorSearchPageState extends State<VendorSearchPage> {
                         filled: true,
                         fillColor: AppColors.gray50,
                       ),
-                      onChanged: (_) => _performSearch(),
+                      onChanged: _onSearchChanged,
                     ),
                     SizedBox(height: 12.h),
 
                     // اختيار المحافظة
                     DropdownButtonFormField<String?>(
-                      value: _selectedGovernorate,
+                      initialValue: _selectedGovernorate,
                       decoration: InputDecoration(
                         labelText: 'المحافظة',
                         prefixIcon: const Icon(Icons.location_city),
@@ -259,7 +264,6 @@ class _VendorSearchPageState extends State<VendorSearchPage> {
                       ),
                       items: [
                         const DropdownMenuItem<String?>(
-                          value: null,
                           child: Text('كل المحافظات'),
                         ),
                         ..._governorates.map(
@@ -285,7 +289,7 @@ class _VendorSearchPageState extends State<VendorSearchPage> {
 
                     // اختيار المديرية
                     DropdownButtonFormField<String?>(
-                      value: _selectedDistrict,
+                      initialValue: _selectedDistrict,
                       decoration: InputDecoration(
                         labelText: 'المديرية',
                         prefixIcon: const Icon(Icons.place),
@@ -297,7 +301,6 @@ class _VendorSearchPageState extends State<VendorSearchPage> {
                       ),
                       items: [
                         const DropdownMenuItem<String?>(
-                          value: null,
                           child: Text('كل المديريات'),
                         ),
                         ..._districts.map(
@@ -502,7 +505,6 @@ class _VendorSearchCard extends StatelessWidget {
           // زر الإضافة
           AppButton(
             text: 'إضافة',
-            variant: AppButtonVariant.primary,
             size: AppButtonSize.small,
             icon: Icon(Icons.add, size: 18.w, color: Colors.white),
             onPressed: onAdd,

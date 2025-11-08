@@ -15,14 +15,16 @@ class VendorModel {
     required this.stock,
     required this.isActive,
     required this.createdAt,
+    this.userId,
     this.updatedAt,
     this.notes,
   });
 
   factory VendorModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = doc.data()! as Map<String, dynamic>;
     return VendorModel(
       id: doc.id,
+      userId: data['userId'] as String?, // userId الحقيقي من users
       name: data['name'] as String? ?? '',
       ownerName: data['ownerName'] as String? ?? '',
       phone: data['phone'] as String? ?? '',
@@ -42,6 +44,7 @@ class VendorModel {
   factory VendorModel.fromJson(Map<String, dynamic> json) {
     return VendorModel(
       id: json['id'] as String? ?? '',
+      userId: json['userId'] as String?,
       name: json['name'] as String? ?? '',
       ownerName: json['ownerName'] as String? ?? '',
       phone: json['phone'] as String? ?? '',
@@ -55,7 +58,7 @@ class VendorModel {
       createdAt: json['createdAt'] is Timestamp
           ? (json['createdAt'] as Timestamp).toDate()
           : DateTime.parse(
-              json['createdAt'] as String? ?? DateTime.now().toIso8601String()),
+              json['createdAt'] as String? ?? DateTime.now().toIso8601String(),),
       updatedAt: json['updatedAt'] != null
           ? (json['updatedAt'] is Timestamp
               ? (json['updatedAt'] as Timestamp).toDate()
@@ -65,7 +68,8 @@ class VendorModel {
     );
   }
 
-  final String id;
+  final String id; // Document ID (composite key: {networkId}_{userId})
+  final String? userId; // User ID الحقيقي من users collection
   final String name;
   final String ownerName;
   final String phone;
@@ -100,6 +104,11 @@ class VendorModel {
       json['id'] = id;
     }
 
+    // إضافة userId (مهم للتوافق)
+    if (userId != null && userId!.isNotEmpty) {
+      json['userId'] = userId;
+    }
+
     // إضافة updatedAt فقط إذا كانت موجودة
     if (updatedAt != null) {
       json['updatedAt'] = Timestamp.fromDate(updatedAt!);
@@ -115,4 +124,7 @@ class VendorModel {
 
   String get location => '$governorate، $district';
   String get avatar => name.isNotEmpty ? name[0].toUpperCase() : 'م';
+  
+  // Getter للحصول على userId الحقيقي (للتوافق الخلفي)
+  String get realUserId => userId ?? id;
 }

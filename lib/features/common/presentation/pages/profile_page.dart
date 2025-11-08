@@ -13,6 +13,9 @@ import '../../../../shared/widgets/app_button.dart';
 import '../../../../shared/widgets/app_card.dart';
 import '../../../../shared/widgets/toast/toast.dart';
 
+// استيراد User و UserType من auth_provider
+export '../../../../core/providers/auth_provider.dart' show User, UserType;
+
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
 
@@ -28,9 +31,14 @@ class _ProfilePageState extends State<ProfilePage> {
   final _passwordFormKey = GlobalKey<FormState>();
 
   late TextEditingController _nameController;
+  late TextEditingController _ownerNameController;
   late TextEditingController _networkNameController;
   late TextEditingController _emailController;
   late TextEditingController _secondPhoneController;
+  late TextEditingController _governorateController;
+  late TextEditingController _districtController;
+  late TextEditingController _cityController;
+  late TextEditingController _addressController;
 
   final _currentPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
@@ -47,19 +55,27 @@ class _ProfilePageState extends State<ProfilePage> {
     super.initState();
     final user = context.read<AuthProvider>().user;
     _nameController = TextEditingController(text: user?.name ?? '');
-    _networkNameController =
-        TextEditingController(text: user?.networkName ?? user?.name ?? '');
+    _ownerNameController = TextEditingController(text: user?.ownerName ?? '');
+    _networkNameController = TextEditingController(text: user?.networkName ?? '');
     _emailController = TextEditingController(text: user?.email ?? '');
-    _secondPhoneController =
-        TextEditingController(text: user?.secondPhone ?? '');
+    _secondPhoneController = TextEditingController(text: user?.secondPhone ?? '');
+    _governorateController = TextEditingController(text: user?.governorate ?? '');
+    _districtController = TextEditingController(text: user?.district ?? '');
+    _cityController = TextEditingController(text: user?.city ?? '');
+    _addressController = TextEditingController(text: user?.address ?? '');
   }
 
   @override
   void dispose() {
     _nameController.dispose();
+    _ownerNameController.dispose();
     _networkNameController.dispose();
     _emailController.dispose();
     _secondPhoneController.dispose();
+    _governorateController.dispose();
+    _districtController.dispose();
+    _cityController.dispose();
+    _addressController.dispose();
     _currentPasswordController.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
@@ -80,14 +96,20 @@ class _ProfilePageState extends State<ProfilePage> {
     if (user != null) {
       print('🔄 تحديث TextControllers:');
       print('  - الاسم: ${user.name}');
+      print('  - اسم المالك: ${user.ownerName}');
       print('  - اسم الشبكة: ${user.networkName}');
       print('  - البريد: ${user.email}');
       print('  - الهاتف الثاني: ${user.secondPhone}');
 
       _nameController.text = user.name;
-      _networkNameController.text = user.networkName ?? user.name;
+      _ownerNameController.text = user.ownerName ?? '';
+      _networkNameController.text = user.networkName ?? '';
       _emailController.text = user.email;
       _secondPhoneController.text = user.secondPhone ?? '';
+      _governorateController.text = user.governorate ?? '';
+      _districtController.text = user.district ?? '';
+      _cityController.text = user.city ?? '';
+      _addressController.text = user.address ?? '';
 
       print('✅ تم تحديث TextControllers');
     } else {
@@ -232,8 +254,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
                     if (confirmed ?? false) {
                       await authProvider.logout();
-                      if (!mounted) return;
-                      context.go('/login');
+                      if (mounted) {
+                        context.go('/login');
+                      }
                     }
                   },
                 ),
@@ -259,13 +282,9 @@ class _ProfilePageState extends State<ProfilePage> {
                     : (user?.avatar != null && user!.avatar!.startsWith('http'))
                         ? NetworkImage(user.avatar!) as ImageProvider
                         : null,
-                child: _selectedImage == null &&
-                        (user?.avatar == null ||
-                            !user!.avatar!.startsWith('http'))
+                child: _selectedImage == null && (user?.avatar == null || !user!.avatar!.startsWith('http'))
                     ? Text(
-                        user?.avatar ??
-                            user?.name.substring(0, 1).toUpperCase() ??
-                            'م',
+                        user?.avatar ?? user?.name.substring(0, 1).toUpperCase() ?? 'م',
                         style: TextStyle(
                           color: AppColors.primary,
                           fontSize: 40.sp,
@@ -358,23 +377,51 @@ class _ProfilePageState extends State<ProfilePage> {
             key: _formKey,
             child: Column(
               children: [
-                // الاسم
-                _buildInfoField(
-                  label: 'الاسم الكامل',
-                  controller: _nameController,
-                  enabled: _isEditingProfile,
-                  icon: Icons.person,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'الاسم مطلوب';
-                    }
-                    return null;
-                  },
-                ),
-                SizedBox(height: 12.h),
+                // لمستخدمي posVendor: اسم المتجر من name وaسم المالك من ownerName
+                if (user?.type == UserType.posVendor) ...[
+                  _buildInfoField(
+                    label: 'اسم المتجر',
+                    controller: _nameController,
+                    enabled: _isEditingProfile,
+                    icon: Icons.store,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'اسم المتجر مطلوب';
+                      }
+                      return null;
+                    },
+                  ),
+                  SizedBox(height: 12.h),
+                  _buildInfoField(
+                    label: 'اسم مالك المتجر',
+                    controller: _ownerNameController,
+                    enabled: _isEditingProfile,
+                    icon: Icons.person,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'اسم المالك مطلوب';
+                      }
+                      return null;
+                    },
+                  ),
+                  SizedBox(height: 12.h),
+                ] else ...[
+                  // لمستخدمي networkOwner: name هو اسم المالك و networkName هو اسم الشبكة
+                  _buildInfoField(
+                    label: 'اسم مالك الشبكة',
+                    controller: _nameController,
+                    enabled: _isEditingProfile,
+                    icon: Icons.person,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'اسم المالك مطلوب';
+                      }
+                      return null;
+                    },
+                  ),
+                  SizedBox(height: 12.h),
 
-                // اسم الشبكة (لمالكي الشبكات فقط)
-                if (user?.type == UserType.networkOwner) ...[
+                  // اسم الشبكة (لمالكي الشبكات فقط)
                   _buildInfoField(
                     label: 'اسم الشبكة',
                     controller: _networkNameController,
@@ -397,6 +444,52 @@ class _ProfilePageState extends State<ProfilePage> {
                   enabled: false,
                   icon: Icons.phone,
                   helperText: 'لا يمكن تغيير رقم الهاتف الأساسي',
+                ),
+                SizedBox(height: 12.h),
+
+                // المحافظة والمديرية والمدينة (لجميع المستخدمين)
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildInfoField(
+                        label: 'المحافظة',
+                        controller: _governorateController,
+                        enabled: _isEditingProfile,
+                        icon: Icons.location_city,
+                        hintText: 'صنعاء',
+                      ),
+                    ),
+                    SizedBox(width: 12.w),
+                    Expanded(
+                      child: _buildInfoField(
+                        label: 'المديرية',
+                        controller: _districtController,
+                        enabled: _isEditingProfile,
+                        icon: Icons.place,
+                        hintText: 'عتق',
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 12.h),
+
+                // المدينة (لجميع المستخدمين)
+                _buildInfoField(
+                  label: 'المدينة',
+                  controller: _cityController,
+                  enabled: _isEditingProfile,
+                  icon: Icons.location_on,
+                  hintText: 'المدينة',
+                ),
+                SizedBox(height: 12.h),
+
+                // العنوان التفصيلي (لجميع المستخدمين)
+                _buildInfoField(
+                  label: 'العنوان التفصيلي',
+                  controller: _addressController,
+                  enabled: _isEditingProfile,
+                  icon: Icons.home,
+                  hintText: 'العنوان الكامل',
                 ),
                 SizedBox(height: 12.h),
 
@@ -442,10 +535,14 @@ class _ProfilePageState extends State<ProfilePage> {
                       setState(() {
                         _isEditingProfile = false;
                         _nameController.text = user?.name ?? '';
-                        _networkNameController.text =
-                            user?.networkName ?? user?.name ?? '';
+                        _ownerNameController.text = user?.ownerName ?? '';
+                        _networkNameController.text = user?.networkName ?? '';
                         _emailController.text = user?.email ?? '';
                         _secondPhoneController.text = user?.secondPhone ?? '';
+                        _governorateController.text = user?.governorate ?? '';
+                        _districtController.text = user?.district ?? '';
+                        _cityController.text = user?.city ?? '';
+                        _addressController.text = user?.address ?? '';
                       });
                     },
                   ),
@@ -507,13 +604,10 @@ class _ProfilePageState extends State<ProfilePage> {
                       prefixIcon: const Icon(Icons.lock),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _obscureCurrentPassword
-                              ? Icons.visibility_off
-                              : Icons.visibility,
+                          _obscureCurrentPassword ? Icons.visibility_off : Icons.visibility,
                         ),
                         onPressed: () => setState(
-                          () => _obscureCurrentPassword =
-                              !_obscureCurrentPassword,
+                          () => _obscureCurrentPassword = !_obscureCurrentPassword,
                         ),
                       ),
                       border: OutlineInputBorder(
@@ -538,9 +632,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _obscureNewPassword
-                              ? Icons.visibility_off
-                              : Icons.visibility,
+                          _obscureNewPassword ? Icons.visibility_off : Icons.visibility,
                         ),
                         onPressed: () => setState(
                           () => _obscureNewPassword = !_obscureNewPassword,
@@ -571,13 +663,10 @@ class _ProfilePageState extends State<ProfilePage> {
                       prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _obscureConfirmPassword
-                              ? Icons.visibility_off
-                              : Icons.visibility,
+                          _obscureConfirmPassword ? Icons.visibility_off : Icons.visibility,
                         ),
                         onPressed: () => setState(
-                          () => _obscureConfirmPassword =
-                              !_obscureConfirmPassword,
+                          () => _obscureConfirmPassword = !_obscureConfirmPassword,
                         ),
                       ),
                       border: OutlineInputBorder(
@@ -703,10 +792,10 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Widget _buildInfoField({
     required String label,
-    TextEditingController? controller,
-    String? initialValue,
     required bool enabled,
     required IconData icon,
+    TextEditingController? controller,
+    String? initialValue,
     String? hintText,
     String? helperText,
     TextInputType? keyboardType,
@@ -726,19 +815,19 @@ class _ProfilePageState extends State<ProfilePage> {
         fillColor: enabled ? Colors.white : AppColors.gray50,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12.r),
-          borderSide: BorderSide(color: AppColors.gray300),
+          borderSide: const BorderSide(color: AppColors.gray300),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12.r),
-          borderSide: BorderSide(color: AppColors.gray300),
+          borderSide: const BorderSide(color: AppColors.gray300),
         ),
         disabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12.r),
-          borderSide: BorderSide(color: AppColors.gray200),
+          borderSide: const BorderSide(color: AppColors.gray200),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12.r),
-          borderSide: BorderSide(color: AppColors.primary, width: 2),
+          borderSide: const BorderSide(color: AppColors.primary, width: 2),
         ),
       ),
       validator: validator,
@@ -795,24 +884,27 @@ class _ProfilePageState extends State<ProfilePage> {
     if (!_formKey.currentState!.validate()) return;
 
     final authProvider = context.read<AuthProvider>();
-    final user = authProvider.user;
 
     final newName = _nameController.text.trim();
-    final newNetworkName = user?.type == UserType.networkOwner
-        ? _networkNameController.text.trim()
-        : null;
-    final newEmail = _emailController.text.trim().isEmpty
-        ? null
-        : _emailController.text.trim();
-    final newSecondPhone = _secondPhoneController.text.trim().isEmpty
-        ? null
-        : _secondPhoneController.text.trim();
+    final newOwnerName = _ownerNameController.text.trim().isEmpty ? null : _ownerNameController.text.trim();
+    final newNetworkName = _networkNameController.text.trim().isEmpty ? null : _networkNameController.text.trim();
+    final newEmail = _emailController.text.trim().isEmpty ? null : _emailController.text.trim();
+    final newSecondPhone = _secondPhoneController.text.trim().isEmpty ? null : _secondPhoneController.text.trim();
+    final newGovernorate = _governorateController.text.trim().isEmpty ? null : _governorateController.text.trim();
+    final newDistrict = _districtController.text.trim().isEmpty ? null : _districtController.text.trim();
+    final newCity = _cityController.text.trim().isEmpty ? null : _cityController.text.trim();
+    final newAddress = _addressController.text.trim().isEmpty ? null : _addressController.text.trim();
 
     print('🔄 محاولة حفظ التغييرات:');
     print('  - الاسم الجديد: $newName');
+    print('  - اسم المالك الجديد: $newOwnerName');
     print('  - اسم الشبكة الجديد: $newNetworkName');
     print('  - البريد الجديد: $newEmail');
     print('  - الهاتف الثاني الجديد: $newSecondPhone');
+    print('  - المحافظة: $newGovernorate');
+    print('  - المديرية: $newDistrict');
+    print('  - المدينة: $newCity');
+    print('  - العنوان: $newAddress');
 
     // عرض مؤشر التحميل
     showDialog<void>(
@@ -826,9 +918,14 @@ class _ProfilePageState extends State<ProfilePage> {
     // حفظ التغييرات في Firebase
     final success = await authProvider.updateUserProfile(
       name: newName,
+      ownerName: newOwnerName, // حفظ ownerName دائماً (posVendor يستخدمه)
       networkName: newNetworkName,
       email: newEmail,
       secondPhone: newSecondPhone,
+      governorate: newGovernorate,
+      district: newDistrict,
+      city: newCity,
+      address: newAddress,
     );
 
     print('✅ نتيجة الحفظ: ${success ? "نجح" : "فشل"}');

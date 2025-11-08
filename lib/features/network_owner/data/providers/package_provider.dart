@@ -33,7 +33,7 @@ class PackageProvider extends ChangeNotifier {
           notifyListeners();
         },
       );
-    } catch (e) {
+    } on Exception catch (e) {
       _isLoading = false;
       _error = e.toString();
       notifyListeners();
@@ -51,7 +51,7 @@ class PackageProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
       return true;
-    } catch (e) {
+    } on Exception catch (e) {
       _isLoading = false;
       _error = e.toString();
       notifyListeners();
@@ -70,7 +70,7 @@ class PackageProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
       return true;
-    } catch (e) {
+    } on Exception catch (e) {
       _isLoading = false;
       _error = e.toString();
       notifyListeners();
@@ -89,7 +89,7 @@ class PackageProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
       return true;
-    } catch (e) {
+    } on Exception catch (e) {
       _isLoading = false;
       _error = e.toString();
       notifyListeners();
@@ -108,7 +108,26 @@ class PackageProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
       return true;
-    } catch (e) {
+    } on Exception catch (e) {
+      _isLoading = false;
+      _error = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  // تفعيل/إيقاف الباقة
+  Future<bool> togglePackageStatus(String packageId, {required bool isActive}) async {
+    try {
+      _isLoading = true;
+      notifyListeners();
+
+      await FirebasePackageService.togglePackageStatus(packageId, isActive: isActive);
+
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } on Exception catch (e) {
       _isLoading = false;
       _error = e.toString();
       notifyListeners();
@@ -121,7 +140,7 @@ class PackageProvider extends ChangeNotifier {
     try {
       _stats = await FirebasePackageService.getPackageStats(networkId);
       notifyListeners();
-    } catch (e) {
+    } on Exception catch (e) {
       _error = e.toString();
       notifyListeners();
     }
@@ -151,7 +170,7 @@ class PackageProvider extends ChangeNotifier {
           notifyListeners();
         },
       );
-    } catch (e) {
+    } on Exception catch (e) {
       _isLoading = false;
       _error = e.toString();
       notifyListeners();

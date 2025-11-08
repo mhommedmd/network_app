@@ -21,6 +21,7 @@ class PackageCardData {
     this.type = PackageType.basic,
     this.icon,
     this.accentColor,
+    this.isActive = true, // حالة الباقة (مفعلة/موقوفة)
   });
   final String name;
   final int sizeInMb;
@@ -33,6 +34,7 @@ class PackageCardData {
   final IconData? icon;
   final Color?
       accentColor; // optional custom accent color (used for custom type)
+  final bool isActive; // حالة الباقة
 
   String get formattedSize {
     if (sizeInMb >= 1024) {
@@ -129,20 +131,57 @@ class PackageCard extends StatelessWidget {
           child: AppCard(
             onTap: onEdit ?? onTap,
             padding: EdgeInsets.all(14.w),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Column(
               children: [
-                // Leading Icon
-                Container(
-                  width: dense ? 42.r : 50.r,
-                  height: dense ? 42.r : 50.r,
-                  decoration: BoxDecoration(
-                    color: bg, // solid color only
-                    borderRadius: BorderRadius.circular(14.r),
+                // علامة الإيقاف (تظهر فقط للباقات الموقوفة)
+                if (!data.isActive)
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+                    margin: EdgeInsets.only(bottom: 12.h),
+                    decoration: BoxDecoration(
+                      color: AppColors.warning.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10.r),
+                      border: Border.all(
+                        color: AppColors.warning.withValues(alpha: 0.4),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.pause_circle,
+                          color: AppColors.warning,
+                          size: 16.w,
+                        ),
+                        SizedBox(width: 6.w),
+                        Text(
+                          'الباقة متوقفة',
+                          style: TextStyle(
+                            fontSize: 11.sp,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.warningDark,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  child: Icon(iconData, color: Colors.white, size: 26.r),
-                ),
-                SizedBox(width: 14.w),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Leading Icon
+                    Container(
+                      width: dense ? 42.r : 50.r,
+                      height: dense ? 42.r : 50.r,
+                      decoration: BoxDecoration(
+                        color: data.isActive
+                            ? bg
+                            : AppColors.gray400, // رمادي للباقات الموقوفة
+                        borderRadius: BorderRadius.circular(14.r),
+                      ),
+                      child: Icon(iconData, color: Colors.white, size: 26.r),
+                    ),
+                    SizedBox(width: 14.w),
                 // Middle info
                 Expanded(
                   child: Column(
@@ -170,7 +209,9 @@ class PackageCard extends StatelessWidget {
                             icon: Icons.calendar_month_outlined,
                           ),
                           _MetaChip(
-                            label: '${data.usageWindowHours} ساعة',
+                            label: data.usageWindowHours > 0
+                                ? '${data.usageWindowHours} ساعة'
+                                : 'مفتوح',
                             icon: Icons.access_time_outlined,
                           ),
                           if (showQuantity)
@@ -183,26 +224,28 @@ class PackageCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (showRetailPrice || showWholesalePrice)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      if (showRetailPrice)
-                        _PriceTag(
-                          label: 'سعر البيع',
-                          value: CurrencyFormatter.format(data.retailPrice),
-                          color: AppColors.success,
-                        ),
-                      if (showRetailPrice && showWholesalePrice)
-                        SizedBox(height: 10.h),
-                      if (showWholesalePrice)
-                        _PriceTag(
-                          label: 'سعر الشراء',
-                          value: CurrencyFormatter.format(data.wholesalePrice),
-                          color: AppColors.error,
-                        ),
-                    ],
-                  ),
+                    if (showRetailPrice || showWholesalePrice)
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          if (showRetailPrice)
+                            _PriceTag(
+                              label: 'سعر البيع',
+                              value: CurrencyFormatter.format(data.retailPrice),
+                              color: AppColors.success,
+                            ),
+                          if (showRetailPrice && showWholesalePrice)
+                            SizedBox(height: 10.h),
+                          if (showWholesalePrice)
+                            _PriceTag(
+                              label: 'سعر الشراء',
+                              value: CurrencyFormatter.format(data.wholesalePrice),
+                              color: AppColors.error,
+                            ),
+                        ],
+                      ),
+                  ],
+                ),
               ],
             ),
           ),

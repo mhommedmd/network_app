@@ -28,4 +28,13 @@ class CurrencyFormatter {
         : _intFormat.format(abs.round());
     return '$sign$core $symbol';
   }
+
+  /// Formats currency in compact form (K for thousands)
+  static String formatCompact(num value) {
+    if (value >= 1000) {
+      final thousands = value / 1000;
+      return '${thousands.toStringAsFixed(0)}K $symbol';
+    }
+    return '${_intFormat.format(value)} $symbol';
+  }
 }

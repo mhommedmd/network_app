@@ -10,6 +10,7 @@ import '../../../../core/providers/auth_provider.dart';
 import '../../../../core/providers/language_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/ui_tokens.dart';
+import '../../../../core/utils/phone_utils.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../../../shared/widgets/user_type_selector.dart';
 
@@ -27,7 +28,7 @@ class _RegisterPageState extends State<RegisterPage> {
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  final _entityNameController = TextEditingController();
+  final _networkOrStoreNameController = TextEditingController(); // اسم الشبكة أو المتجر
   final _ownerNameController = TextEditingController();
   final _districtController = TextEditingController();
   final _cityController = TextEditingController();
@@ -69,7 +70,7 @@ class _RegisterPageState extends State<RegisterPage> {
     _phoneController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    _entityNameController.dispose();
+    _networkOrStoreNameController.dispose();
     _ownerNameController.dispose();
     _districtController.dispose();
     _cityController.dispose();
@@ -79,11 +80,9 @@ class _RegisterPageState extends State<RegisterPage> {
 
   bool get _isNetworkOwner => _selectedUserType == UserType.networkOwner;
 
-  String get _entityNameLabel =>
-      _isNetworkOwner ? 'اسم الشبكة' : 'اسم نقطة البيع';
+  String get _networkOrStoreNameLabel => _isNetworkOwner ? 'اسم الشبكة' : 'اسم نقطة البيع';
 
-  String get _ownerNameLabel =>
-      _isNetworkOwner ? 'اسم مالك الشبكة' : 'اسم مالك نقطة البيع';
+  String get _ownerNameLabel => _isNetworkOwner ? 'اسم مالك الشبكة' : 'اسم مالك نقطة البيع';
 
   Future<void> _handleNext(AuthProvider authProvider) async {
     if (authProvider.isLoading) {
@@ -91,14 +90,21 @@ class _RegisterPageState extends State<RegisterPage> {
     }
 
     FocusScope.of(context).unfocus();
+
     if (_currentStep == 0) {
+      // الخطوة الأولى: التحقق من بيانات الدخول الأساسية
       if (_stepOneKey.currentState?.validate() ?? false) {
         setState(() => _currentStep = 1);
       }
       return;
     }
+
     if (_currentStep == 1) {
-      await _submit(authProvider);
+      // الخطوة الثانية: التحقق من بيانات الحساب وإتمام التسجيل مباشرة
+      if (_stepTwoKey.currentState?.validate() ?? false) {
+        // إتمام التسجيل مباشرة بدون OTP
+        await _submit(authProvider);
+      }
     }
   }
 
@@ -116,9 +122,15 @@ class _RegisterPageState extends State<RegisterPage> {
 
     final phone = _phoneController.text.trim();
     final ownerName = _ownerNameController.text.trim();
+    final networkOrStoreName = _networkOrStoreNameController.text.trim();
+
+    // تحديد الاسم الذي سيتم تمريره لدالة register
+    // لـ networkowner: نمرر ownerName
+    // لـ posvendor: نمرر اسم المتجر
+    final nameForRegister = _isNetworkOwner ? ownerName : networkOrStoreName;
 
     final success = await authProvider.register(
-      name: ownerName,
+      name: nameForRegister,
       phone: phone,
       password: _passwordController.text,
       confirmPassword: _confirmPasswordController.text,
@@ -131,24 +143,55 @@ class _RegisterPageState extends State<RegisterPage> {
       try {
         final userId = authProvider.user?.id;
         if (userId != null) {
+          final district = _districtController.text.trim();
+          final city = _cityController.text.trim();
+
           final profileData = <String, dynamic>{
             'accountType': _selectedUserType.name,
             'phone': phone,
-            'entityName': _entityNameController.text.trim(),
             'ownerName': ownerName,
             'governorate': _selectedGovernorate,
-            'district': _districtController.text.trim(),
-            'city': _cityController.text.trim(),
+            'district': district,
+            'city': city,
             'completedAt': DateTime.now().toIso8601String(),
           };
+
+          // إضافة الحقول الخاصة بكل نوع حساب
+          if (_isNetworkOwner) {
+            profileData['networkName'] = networkOrStoreName;
+          } else {
+            profileData['name'] = networkOrStoreName;
+          }
+
           final street = _streetController.text.trim();
           if (!_isNetworkOwner && street.isNotEmpty) {
             profileData['street'] = street;
           }
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(userId)
-              .set(profileData, SetOptions(merge: true));
+
+          await FirebaseFirestore.instance.collection('users').doc(userId).set(profileData, SetOptions(merge: true));
+
+          // تحديث بيانات المستخدم في AuthProvider باستخدام updateUserProfile
+          // هذا يضمن تحديث User object في الذاكرة أيضاً
+          if (_isNetworkOwner) {
+            // لـ networkowner: name يجب أن يبقى ownerName، ونضيف networkName
+            await authProvider.updateUserProfile(
+              name: ownerName, // التأكد من أن name = ownerName
+              networkName: networkOrStoreName,
+              ownerName: ownerName,
+              governorate: _selectedGovernorate,
+              district: district,
+              address: city, // city يتم حفظه في address
+            );
+          } else {
+            // لـ posvendor: name = اسم المتجر
+            await authProvider.updateUserProfile(
+              name: networkOrStoreName,
+              ownerName: ownerName,
+              governorate: _selectedGovernorate,
+              district: district,
+              address: city, // city يتم حفظه في address
+            );
+          }
         }
       } on FirebaseException catch (e) {
         debugPrint('فشل في حفظ بيانات التسجيل الإضافية: ${e.message}');
@@ -174,7 +217,7 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 
   Widget _buildStepHeader() {
-    final steps = ['نوع الحساب', 'بيانات الحساب'];
+    final steps = ['بيانات الدخول', 'بيانات الحساب'];
     return Row(
       children: List.generate(steps.length, (index) {
         final isActive = _currentStep == index;
@@ -184,8 +227,7 @@ class _RegisterPageState extends State<RegisterPage> {
             : isCompleted
                 ? AppColors.success
                 : AppColors.gray300;
-        final textColor =
-            isActive || isCompleted ? AppColors.gray900 : AppColors.gray500;
+        final textColor = isActive || isCompleted ? AppColors.gray900 : AppColors.gray500;
 
         return Expanded(
           child: Column(
@@ -215,9 +257,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       child: Container(
                         height: 2.h,
                         margin: EdgeInsets.symmetric(horizontal: 6.w),
-                        color: _currentStep > index
-                            ? AppColors.primary
-                            : AppColors.gray300,
+                        color: _currentStep > index ? AppColors.primary : AppColors.gray300,
                       ),
                     ),
                 ],
@@ -269,8 +309,8 @@ class _RegisterPageState extends State<RegisterPage> {
                 keyboardType: TextInputType.phone,
                 textDirection: TextDirection.ltr,
                 inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(9),
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9+]+')),
+                  LengthLimitingTextInputFormatter(14),
                 ],
                 decoration: InputDecoration(
                   labelText: languageProvider.phone,
@@ -281,11 +321,9 @@ class _RegisterPageState extends State<RegisterPage> {
                   if (value == null || value.isEmpty) {
                     return 'رقم الهاتف مطلوب';
                   }
-                  final digits = value.replaceAll(RegExp('[^0-9]'), '');
-                  if (digits.length != 9) {
-                    return 'أدخل رقم هاتف يمني مكون من 9 أرقام';
-                  }
-                  return null;
+                  return PhoneUtils.isValidYemeniPhone(value)
+                      ? null
+                      : 'أدخل رقم هاتف يمني صالحاً';
                 },
               ),
               SizedBox(height: 20.h),
@@ -298,9 +336,7 @@ class _RegisterPageState extends State<RegisterPage> {
                   prefixIcon: const Icon(Icons.lock, color: AppColors.primary),
                   suffixIcon: IconButton(
                     icon: Icon(
-                      _obscurePassword
-                          ? Icons.visibility_off
-                          : Icons.visibility,
+                      _obscurePassword ? Icons.visibility_off : Icons.visibility,
                       color: AppColors.gray500,
                     ),
                     onPressed: () => setState(
@@ -325,13 +361,10 @@ class _RegisterPageState extends State<RegisterPage> {
                 decoration: InputDecoration(
                   labelText: languageProvider.confirmPassword,
                   hintText: 'أعد إدخال كلمة المرور',
-                  prefixIcon:
-                      const Icon(Icons.lock_outline, color: AppColors.primary),
+                  prefixIcon: const Icon(Icons.lock_outline, color: AppColors.primary),
                   suffixIcon: IconButton(
                     icon: Icon(
-                      _obscureConfirmPassword
-                          ? Icons.visibility_off
-                          : Icons.visibility,
+                      _obscureConfirmPassword ? Icons.visibility_off : Icons.visibility,
                       color: AppColors.gray500,
                     ),
                     onPressed: () => setState(
@@ -367,12 +400,11 @@ class _RegisterPageState extends State<RegisterPage> {
               ),
               SizedBox(height: 20.h),
               TextFormField(
-                controller: _entityNameController,
+                controller: _networkOrStoreNameController,
                 decoration: InputDecoration(
-                  labelText: _entityNameLabel,
+                  labelText: _networkOrStoreNameLabel,
                   hintText: 'أدخل الاسم الكامل',
-                  prefixIcon:
-                      const Icon(Icons.business, color: AppColors.primary),
+                  prefixIcon: const Icon(Icons.business, color: AppColors.primary),
                 ),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
@@ -387,8 +419,7 @@ class _RegisterPageState extends State<RegisterPage> {
                 decoration: InputDecoration(
                   labelText: _ownerNameLabel,
                   hintText: 'أدخل الاسم الثلاثي',
-                  prefixIcon:
-                      const Icon(Icons.person, color: AppColors.primary),
+                  prefixIcon: const Icon(Icons.person, color: AppColors.primary),
                 ),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
@@ -431,8 +462,7 @@ class _RegisterPageState extends State<RegisterPage> {
                 decoration: const InputDecoration(
                   labelText: 'اسم المديرية',
                   hintText: 'مثال: معين',
-                  prefixIcon:
-                      Icon(Icons.location_city, color: AppColors.primary),
+                  prefixIcon: Icon(Icons.location_city, color: AppColors.primary),
                 ),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
@@ -482,8 +512,7 @@ class _RegisterPageState extends State<RegisterPage> {
       children: [
         Expanded(
           child: TextButton(
-            onPressed:
-                authProvider.isLoading ? null : () => _handleBack(authProvider),
+            onPressed: authProvider.isLoading ? null : () => _handleBack(authProvider),
             child: Text(_currentStep == 0 ? 'عودة لتسجيل الدخول' : 'السابق'),
           ),
         ),
@@ -491,8 +520,7 @@ class _RegisterPageState extends State<RegisterPage> {
         Expanded(
           child: AppButton(
             text: primaryText,
-            onPressed:
-                authProvider.isLoading ? null : () => _handleNext(authProvider),
+            onPressed: authProvider.isLoading ? null : () => _handleNext(authProvider),
             loading: isLastStep && authProvider.isLoading,
             fullWidth: true,
             size: AppButtonSize.large,
@@ -547,8 +575,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       key: ValueKey(_currentStep),
                       child: Padding(
                         padding: EdgeInsets.symmetric(vertical: 4.h),
-                        child:
-                            _buildStepContent(languageProvider, authProvider),
+                        child: _buildStepContent(languageProvider, authProvider),
                       ),
                     ),
                   ),

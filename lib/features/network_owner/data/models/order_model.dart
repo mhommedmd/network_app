@@ -20,7 +20,7 @@ class OrderModel {
   });
 
   factory OrderModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = doc.data()! as Map<String, dynamic>;
 
     // قراءة items من الـ array
     final itemsList = data['items'] as List<dynamic>? ?? [];
@@ -58,7 +58,7 @@ class OrderModel {
   final String? notes;
 
   // حساب إجمالي الكروت
-  int get totalCards => items.fold(0, (sum, item) => sum + item.quantity);
+  int get totalCards => items.fold(0, (total, item) => total + item.quantity);
 
   Map<String, dynamic> toJson() {
     return {

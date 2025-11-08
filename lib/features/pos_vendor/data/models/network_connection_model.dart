@@ -17,7 +17,7 @@ class NetworkConnectionModel {
   });
 
   factory NetworkConnectionModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = doc.data()! as Map<String, dynamic>;
     return NetworkConnectionModel(
       id: doc.id,
       vendorId: data['vendorId'] as String? ?? '',

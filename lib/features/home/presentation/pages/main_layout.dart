@@ -15,12 +15,11 @@ import '../../../network_owner/presentation/pages/import_cards_page.dart';
 import '../../../network_owner/presentation/pages/merchant_transactions_page.dart';
 import '../../../network_owner/presentation/pages/network_owner_home_page.dart';
 import '../../../network_owner/presentation/pages/network_page.dart';
-import '../../../network_owner/presentation/pages/order_details_page.dart';
+import '../../../pos_vendor/data/models/network_connection_model.dart';
 import '../../../pos_vendor/presentation/pages/cash_payment_page.dart';
 import '../../../pos_vendor/presentation/pages/network_details_page.dart';
 import '../../../pos_vendor/presentation/pages/networks_page.dart';
 import '../../../pos_vendor/presentation/pages/pos_vendor_home_page.dart';
-import '../../../pos_vendor/presentation/pages/request_cards_page.dart';
 import '../../../pos_vendor/presentation/pages/sale_process_page.dart';
 import '../../../pos_vendor/presentation/pages/send_order_page.dart';
 
@@ -28,7 +27,6 @@ enum PageType {
   main,
   addPackage,
   editPackage,
-  orderDetails,
   importCards,
   merchantTransactions,
   cashPaymentOwner,
@@ -36,7 +34,6 @@ enum PageType {
   saleProcess,
   networkDetails,
   sendOrder,
-  requestCards,
 }
 
 class MainLayout extends StatefulWidget {
@@ -57,9 +54,8 @@ class _MainLayoutState extends State<MainLayout> {
   int? selectedOrderId;
   String? selectedVendorId;
   int? selectedPackageId;
-  int? selectedNetworkId;
+  NetworkConnectionModel? selectedNetwork;
   String? selectedMerchantId;
-  int networkTabIndex = 0;
   final List<String> _packageNames = [
     'باقــة أساسية',
     'باقــة مميزة',
@@ -75,9 +71,8 @@ class _MainLayoutState extends State<MainLayout> {
     int? orderId,
     String? vendorId,
     int? packageId,
-    int? networkId,
+    NetworkConnectionModel? network,
     String? merchantId,
-    int? networkTabIndexValue,
   }) {
     setState(() {
       if (tab != null) activeTab = tab;
@@ -88,16 +83,8 @@ class _MainLayoutState extends State<MainLayout> {
       if (orderId != null) selectedOrderId = orderId;
       if (vendorId != null) selectedVendorId = vendorId;
       if (packageId != null) selectedPackageId = packageId;
-      if (networkId != null) selectedNetworkId = networkId;
+      if (network != null) selectedNetwork = network;
       if (merchantId != null) selectedMerchantId = merchantId;
-      if (networkTabIndexValue != null) {
-        final clamped = networkTabIndexValue < 0
-            ? 0
-            : networkTabIndexValue > 1
-                ? 1
-                : networkTabIndexValue;
-        networkTabIndex = clamped;
-      }
     });
   }
 
@@ -110,9 +97,8 @@ class _MainLayoutState extends State<MainLayout> {
       selectedOrderId = null;
       selectedVendorId = null;
       selectedPackageId = null;
-      selectedNetworkId = null;
+      selectedNetwork = null;
       selectedMerchantId = null;
-      networkTabIndex = 0;
     });
   }
 
@@ -130,33 +116,35 @@ class _MainLayoutState extends State<MainLayout> {
 
   // Convert Map from simple pages to Package model expected by EditPackagePage
   Package _mapToPackage(Map<String, dynamic> data) {
-    double toDouble(dynamic v) {
-      if (v == null) return 0;
-      if (v is num) return v.toDouble();
-      return double.tryParse(v.toString()) ?? 0.0;
-    }
-
-    int toInt(dynamic v) {
-      if (v == null) return 0;
-      if (v is int) return v;
-      if (v is num) return v.toInt();
-      return int.tryParse(v.toString()) ?? 0;
-    }
-
     return Package(
       id: data['id'], // يمكن أن يكون String أو int
       name: (data['name'] ?? '') as String,
-      mikrotikName:
-          (data['mikrotikName'] ?? data['mikrotik_name'] ?? '') as String,
-      sellingPrice: toDouble(data['sellingPrice'] ?? data['price']),
-      purchasePrice: toDouble(data['purchasePrice']),
-      validityDays: toInt(data['validityDays']),
-      usageHours: toInt(data['usageHours']),
-      dataSizeGB: toInt(data['dataSizeGB']),
-      dataSizeMB: toInt(data['dataSizeMB']),
+      mikrotikName: (data['mikrotikName'] ?? data['mikrotik_name'] ?? '') as String,
+      sellingPrice: _toDouble(data['sellingPrice'] ?? data['price']),
+      purchasePrice: _toDouble(data['purchasePrice']),
+      validityDays: _toInt(data['validityDays']),
+      usageHours: _toInt(data['usageHours']),
+      dataSizeGB: _toInt(data['dataSizeGB']),
+      dataSizeMB: _toInt(data['dataSizeMB']),
       color: (data['color'] ?? 'blue') as String,
-      stock: toInt(data['stock']),
+      stock: _toInt(data['stock']),
+      isActive: data['isActive'] as bool? ?? true,
     );
+  }
+
+  // Helper method لتحويل قيم dynamic إلى double
+  double _toDouble(dynamic v) {
+    if (v == null) return 0;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString()) ?? 0.0;
+  }
+
+  // Helper method لتحويل قيم dynamic إلى int
+  int _toInt(dynamic v) {
+    if (v == null) return 0;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString()) ?? 0;
   }
 
   // Wrap EditPackagePage onSave (Package) -> existing handler (Map)
@@ -170,6 +158,7 @@ class _MainLayoutState extends State<MainLayout> {
       'purchasePrice': updated.purchasePrice,
       'validityDays': updated.validityDays,
       'usageHours': updated.usageHours,
+      'isActive': updated.isActive,
       'dataSizeGB': updated.dataSizeGB,
       'dataSizeMB': updated.dataSizeMB,
       'color': updated.color,
@@ -179,8 +168,7 @@ class _MainLayoutState extends State<MainLayout> {
   }
 
   void _handleSavePackage(Map<String, dynamic> packageData) {
-    final candidateName =
-        (packageData['packageName'] ?? packageData['name'])?.toString().trim();
+    final candidateName = (packageData['packageName'] ?? packageData['name'])?.toString().trim();
     if (candidateName != null && candidateName.isNotEmpty) {
       setState(() {
         if (!_packageNames.contains(candidateName)) {
@@ -197,10 +185,7 @@ class _MainLayoutState extends State<MainLayout> {
   }
 
   void _handleUpdatePackage(Map<String, dynamic> updatedPackageData) {
-    final candidateName =
-        (updatedPackageData['packageName'] ?? updatedPackageData['name'])
-            ?.toString()
-            .trim();
+    final candidateName = (updatedPackageData['packageName'] ?? updatedPackageData['name'])?.toString().trim();
     if (candidateName != null && candidateName.isNotEmpty) {
       setState(() {
         if (!_packageNames.contains(candidateName)) {
@@ -221,28 +206,11 @@ class _MainLayoutState extends State<MainLayout> {
     _updateAppState(page: PageType.importCards);
   }
 
-  void _handleImportComplete(Map<String, dynamic> cardsData) {
+  void _handleImportComplete(Map<String, dynamic> _) {
     _updateAppState(
       page: PageType.main,
       tab: AppTab.network,
     );
-  }
-
-  // Order handlers
-  void _handleViewOrderDetails(int orderId) {
-    _updateAppState(
-      orderId: orderId,
-      page: PageType.orderDetails,
-      networkTabIndexValue: 1,
-    );
-  }
-
-  void _handleApproveOrder(int orderId) {
-    // Toast already shown in network_page
-  }
-
-  void _handleRejectOrder(int orderId) {
-    // Toast already shown in network_page
   }
 
   // Sale handlers
@@ -259,32 +227,45 @@ class _MainLayoutState extends State<MainLayout> {
   }
 
   // Network handlers
-  void _handleNetworkSelect(int networkId) {
+  void _handleNetworkSelect(NetworkConnectionModel network) {
     _updateAppState(
-      networkId: networkId,
+      network: network,
       page: PageType.networkDetails,
     );
   }
 
-  void _handleSendOrder(int networkId) {
-    _updateAppState(
-      networkId: networkId,
-      page: PageType.sendOrder,
-    );
+  void _handleSendOrder(String networkId, String? networkName) {
+    if (selectedNetwork == null || (selectedNetwork!.networkId.isNotEmpty && selectedNetwork!.networkId != networkId)) {
+      // في السيناريوهات النادرة التي يتم فيها استدعاء إرسال الطلب بدون اختيار شبكة
+      // نحافظ على السلوك الحالي ونعود للصفحة الرئيسية بدلاً من الدخول لصفحة الطلب.
+      _resetAppState();
+      return;
+    }
+
+    if (networkName != null && networkName.isNotEmpty && selectedNetwork!.networkName != networkName) {
+      setState(() {
+        selectedNetwork = NetworkConnectionModel(
+          id: selectedNetwork!.id,
+          vendorId: selectedNetwork!.vendorId,
+          networkId: selectedNetwork!.networkId,
+          networkName: networkName,
+          networkOwner: selectedNetwork!.networkOwner,
+          governorate: selectedNetwork!.governorate,
+          district: selectedNetwork!.district,
+          isActive: selectedNetwork!.isActive,
+          connectedAt: selectedNetwork!.connectedAt,
+          balance: selectedNetwork!.balance,
+          totalOrders: selectedNetwork!.totalOrders,
+        );
+      });
+    }
+    _updateAppState(page: PageType.sendOrder);
   }
 
   // Chat handlers
-  void _handleOpenChatFromOrder(String vendorId) {
+  void _handleOpenChatFromNetwork(String networkId, String? networkName) {
     _updateAppState(
-      vendorId: vendorId,
-      tab: AppTab.chat,
-      page: PageType.main,
-    );
-  }
-
-  void _handleOpenChatFromNetwork(int networkId) {
-    _updateAppState(
-      vendorId: networkId.toString(),
+      vendorId: networkId,
       tab: AppTab.chat,
       page: PageType.main,
     );
@@ -309,28 +290,18 @@ class _MainLayoutState extends State<MainLayout> {
   }
 
   void _handleCashPaymentSubmit(
-      VendorModel vendor, double amount, String note) {
+    VendorModel vendor,
+    double amount,
+    String note,
+  ) {
     // Toast already shown in cash_payment_page
     // العودة للصفحة الرئيسية
     _handleBackToMain();
   }
 
-  void _handleCashPaymentDecision(String requestId, {required bool accepted}) {
-    // Toast already shown in respective page
-  }
-
-  void _handleBackToOrdersTab() {
-    setState(() {
-      selectedOrderId = null;
-      currentPage = PageType.main;
-      activeTab = AppTab.network;
-      networkTabIndex = 1;
-    });
-  }
-
   void _handleBackToNetworks() {
     setState(() {
-      selectedNetworkId = null;
+      selectedNetwork = null;
     });
     _updateAppState(
       page: PageType.main,
@@ -369,15 +340,6 @@ class _MainLayoutState extends State<MainLayout> {
           onImportComplete: _handleImportComplete,
           packageNames: _packageNames,
         ),
-      PageType.orderDetails => selectedOrderId == null
-          ? null
-          : OrderDetailsPage(
-              orderId: selectedOrderId!,
-              onBack: _handleBackToOrdersTab,
-              onApprove: _handleApproveOrder,
-              onReject: _handleRejectOrder,
-              onOpenChat: _handleOpenChatFromOrder,
-            ),
       PageType.merchantTransactions => selectedMerchantId == null
           ? null
           : MerchantTransactionsPage(
@@ -393,7 +355,6 @@ class _MainLayoutState extends State<MainLayout> {
       PageType.saleProcess ||
       PageType.networkDetails ||
       PageType.sendOrder ||
-      PageType.requestCards ||
       PageType.cashPaymentVendor =>
         null,
     };
@@ -405,32 +366,31 @@ class _MainLayoutState extends State<MainLayout> {
       PageType.saleProcess => SaleProcessPage(
           onBack: _handleBackToMain,
         ),
-      PageType.networkDetails => selectedNetworkId == null
+      PageType.networkDetails => selectedNetwork == null
           ? null
           : NetworkDetailsPage(
-              networkId: selectedNetworkId!,
+              networkId: selectedNetwork!.networkId,
+              networkOwnerId: selectedNetwork!.networkId,
+              networkName: selectedNetwork!.networkName,
               onBack: _handleBackToNetworks,
               onSendOrder: _handleSendOrder,
               onOpenChat: _handleOpenChatFromNetwork,
             ),
-      PageType.sendOrder => selectedNetworkId == null
+      PageType.sendOrder => selectedNetwork == null
           // لا يمكن فتح صفحة إرسال الطلب بدون شبكة محددة
           ? null
           : SendOrderPage(
-              networkId: selectedNetworkId!.toString(),
-              networkName: 'الشبكة المحددة', // يمكن تحسين هذا لاحقاً
+              networkId: selectedNetwork!.networkId,
+              networkName: selectedNetwork!.networkName,
             ),
-      PageType.requestCards => const RequestCardsPage(),
       PageType.cashPaymentVendor => PosVendorCashPaymentsPage(
           onBack: _handleBackToMain,
-          onDecision: _handleCashPaymentDecision,
         ),
       // Remaining page types not rendered in vendor overlay context
       PageType.main ||
       PageType.addPackage ||
       PageType.editPackage ||
       PageType.importCards ||
-      PageType.orderDetails ||
       PageType.merchantTransactions ||
       PageType.cashPaymentOwner =>
         null,
@@ -444,7 +404,6 @@ class _MainLayoutState extends State<MainLayout> {
     if (authProvider.user?.type == UserType.networkOwner) {
       return switch (activeTab) {
         AppTab.home => NetworkOwnerHomePage(
-            onViewOrderDetails: _handleViewOrderDetails,
             onAddPackage: _handleAddPackage,
             onImportCards: _handleImportCards,
             onAddMerchant: _handleAddMerchant,
@@ -454,12 +413,8 @@ class _MainLayoutState extends State<MainLayout> {
             onAddPackage: _handleAddPackage,
             onEditPackage: _handleEditPackage,
             onImportCards: _handleImportCards,
-            onViewOrderDetails: _handleViewOrderDetails,
-            onApproveOrder: _handleApproveOrder,
-            onRejectOrder: _handleRejectOrder,
             newPackage: newPackage,
             updatedPackage: updatedPackage,
-            initialTabIndex: networkTabIndex,
           ),
         AppTab.accounts => AccountsPage(
             onViewMerchantTransactions: _handleViewMerchantTransactions,
@@ -468,7 +423,6 @@ class _MainLayoutState extends State<MainLayout> {
         AppTab.profile => const ProfilePage(),
         // AppTab.networks not used for networkOwner role
         AppTab.networks => NetworkOwnerHomePage(
-            onViewOrderDetails: _handleViewOrderDetails,
             onAddPackage: _handleAddPackage,
             onImportCards: _handleImportCards,
             onAddMerchant: _handleAddMerchant,

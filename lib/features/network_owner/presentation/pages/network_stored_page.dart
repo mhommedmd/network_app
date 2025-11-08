@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 
 import '../../../../core/providers/auth_provider.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -9,8 +12,10 @@ import '../../../../shared/utils/error_handler.dart';
 import '../../../../shared/widgets/skeleton/skeleton_loading.dart';
 import '../../../../shared/widgets/toast/toast.dart';
 import '../../data/models/card_model.dart';
+import '../../data/models/vendor_model.dart';
 import '../../data/providers/card_provider.dart';
 import '../../data/services/firebase_card_cleanup_service.dart';
+import '../../data/services/firebase_vendor_service.dart';
 
 /// صفحة عرض مخزون الكروت من Firebase
 class NetworkStoredPage extends StatefulWidget {
@@ -28,12 +33,25 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
   int _rowsPerPage = 50; // عدد الكروت في كل صفحة
   final List<int> _rowsPerPageOptions = [25, 50, 100, 200];
   bool _sortByPackageAscending = true; // للفرز حسب الباقة
+  bool _sortByVendorAscending = true;
   String? _packageToDelete; // الباقة المراد حذف كروتها
+  String? _packageFilter;
+  DateTime? _dateFilter;
+  final Map<String, String> _vendorNames = {};
+  StreamSubscription<List<VendorModel>>? _vendorSubscription;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _loadCards();
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text.trim();
+        _currentPage = 0;
+      });
+    });
 
     // جدولة التنظيف التلقائي للكروت القديمة (يعمل في الخلفية)
     FirebaseCardCleanupService.scheduleAutomaticCleanup();
@@ -42,6 +60,8 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _vendorSubscription?.cancel();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -77,6 +97,7 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
     );
 
     if (confirmed ?? false) {
+      if (!mounted) return;
       final cardProvider = Provider.of<CardProvider>(context, listen: false);
       final success = await cardProvider.deleteCard(card.id);
 
@@ -116,18 +137,31 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
     }
 
     if (networkId.isNotEmpty) {
+      _vendorSubscription?.cancel();
+      _vendorSubscription = FirebaseVendorService.getVendorsByNetwork(networkId).listen(
+        (vendors) {
+          if (!mounted) return;
+          setState(() {
+            _vendorNames
+              ..clear()
+              ..addEntries(
+                vendors.map(
+                  (vendor) => MapEntry(vendor.realUserId, vendor.name),
+                ),
+              );
+          });
+        },
+      );
+
       // تحميل الكروت حسب القسم المختار
       CardStatus? statusToLoad;
       switch (_selectedView) {
         case 'available':
           statusToLoad = CardStatus.available;
-          break;
         case 'transferred':
           statusToLoad = CardStatus.transferred;
-          break;
         case 'sold':
           statusToLoad = CardStatus.sold;
-          break;
       }
 
       if (statusToLoad != null) {
@@ -145,17 +179,38 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
     return names;
   }
 
-  List<CardModel> _getFilteredCards(List<CardModel> cards) {
-    // الكروت بالفعل مفلترة حسب القسم المختار من loadCards
-    var filtered = cards;
+  List<CardModel> _getFilteredCards(
+    List<CardModel> cards,
+    Map<String, String> vendorNames,
+  ) {
+    final filtered = cards.where((card) {
+      if (_packageFilter != null && card.packageName != _packageFilter) {
+        return false;
+      }
+      if (_searchQuery.isNotEmpty && !card.cardNumber.contains(_searchQuery)) {
+        return false;
+      }
+      if (_dateFilter != null && !_isSameDate(_resolveCardDate(card), _dateFilter!)) {
+        return false;
+      }
+      return true;
+    }).toList();
 
-    // فرز حسب الباقة
     filtered.sort((a, b) {
+      if (_selectedView == 'transferred' || _selectedView == 'sold') {
+        final vendorA = vendorNames[a.transferredTo] ?? '';
+        final vendorB = vendorNames[b.transferredTo] ?? '';
+        final vendorCmp = vendorA.compareTo(vendorB);
+        if (vendorCmp != 0) {
+          return _sortByVendorAscending ? vendorCmp : -vendorCmp;
+        }
+      }
+
       final packageCompare = a.packageName.compareTo(b.packageName);
       if (packageCompare != 0) {
         return _sortByPackageAscending ? packageCompare : -packageCompare;
       }
-      // إذا كانت نفس الباقة، رتب حسب رقم الكرت
+
       return a.cardNumber.compareTo(b.cardNumber);
     });
 
@@ -169,6 +224,13 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
     });
   }
 
+  void _toggleVendorSort() {
+    setState(() {
+      _sortByVendorAscending = !_sortByVendorAscending;
+      _currentPage = 0;
+    });
+  }
+
   Future<void> _confirmDeleteAllPackageCards() async {
     if (_packageToDelete == null) {
       CustomToast.warning(
@@ -179,16 +241,27 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
       return;
     }
 
+    if (_dateFilter == null) {
+      CustomToast.warning(
+        context,
+        'اختر تاريخ الإضافة أولاً',
+        title: 'لم يتم اختيار تاريخ',
+      );
+      return;
+    }
+
     final cardProvider = Provider.of<CardProvider>(context, listen: false);
-    final cardsToDelete = cardProvider.cards
-        .where((card) => card.packageName == _packageToDelete)
-        .toList();
+    final cardsToDelete = cardProvider.cards.where((card) {
+      if (card.packageName != _packageToDelete) return false;
+      final cardDate = _resolveCardDate(card);
+      return _isSameDate(cardDate, _dateFilter!);
+    }).toList();
 
     if (cardsToDelete.isEmpty) {
       CustomToast.warning(
         context,
-        'المخزون فارغ من هذه الباقة',
-        title: 'لا توجد كروت "$_packageToDelete"',
+        'لا توجد كروت بهذا التاريخ المحدد',
+        title: 'لا توجد كروت بتاريخ محدد',
       );
       return;
     }
@@ -196,18 +269,30 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('تأكيد الحذف'),
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 24.w),
+            SizedBox(width: 8.w),
+            const Text('تأكيد الحذف الجماعي'),
+          ],
+        ),
         content: Text(
-          'سيتم حذف ${cardsToDelete.length} كرت من الباقة "$_packageToDelete".\n\nهل أنت متأكد؟',
+          _dateFilter == null
+              ? 'سيتم حذف ${cardsToDelete.length} كرت من الباقة "$_packageToDelete".\n\nهذا الإجراء لا يمكن التراجع عنه!'
+              : 'سيتم حذف ${cardsToDelete.length} كرت من الباقة "$_packageToDelete" بتاريخ ${DateFormat('dd/MM/yyyy', 'ar').format(_dateFilter!)}.\n\nهذا الإجراء لا يمكن التراجع عنه!',
+          style: TextStyle(fontSize: 14.sp),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
             child: const Text('إلغاء'),
           ),
-          TextButton(
+          ElevatedButton(
             onPressed: () => Navigator.of(context).pop(true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+            ),
             child: const Text('حذف الكل'),
           ),
         ],
@@ -215,42 +300,72 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
     );
 
     if (confirmed ?? false) {
-      // عرض مؤشر تحميل
       if (!mounted) return;
+
       showDialog<void>(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(),
+        builder: (context) => Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              SizedBox(height: 16.h),
+              Text(
+                'جارٍ حذف ${cardsToDelete.length} كرت...',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14.sp,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
         ),
       );
 
-      // حذف جميع الكروت
-      int deletedCount = 0;
-      for (final card in cardsToDelete) {
-        final success = await cardProvider.deleteCard(card.id);
-        if (success) deletedCount++;
-      }
+      final success = await cardProvider.deleteCards(cardsToDelete.map((card) => card.id).toList());
 
       if (!mounted) return;
-      Navigator.of(context).pop(); // إغلاق مؤشر التحميل
+      Navigator.of(context).pop();
 
-      if (deletedCount == cardsToDelete.length) {
+      if (success) {
         CustomToast.success(
           context,
-          'تم حذف جميع كروت الباقة من المخزون',
-          title: 'تم حذف $deletedCount كرت',
+          _dateFilter == null
+              ? 'تم حذف ${cardsToDelete.length} كرت من الباقة المختارة'
+              : 'تم حذف ${cardsToDelete.length} كرت بتاريخ ${DateFormat('dd/MM/yyyy', 'ar').format(_dateFilter!)}',
+          title: 'تم الحذف',
         );
-        setState(() => _packageToDelete = null);
-        _loadCards();
+        setState(() {
+          _packageToDelete = null;
+          _dateFilter = null;
+        });
       } else {
-        CustomToast.warning(
+        CustomToast.error(
           context,
-          'تم حذف $deletedCount كرت بنجاح، وفشل حذف ${cardsToDelete.length - deletedCount} كرت',
-          title: 'حذف جزئي',
+          cardProvider.error ?? 'فشل حذف الكروت',
+          title: 'تعذر الحذف',
         );
-        _loadCards();
       }
+      _loadCards();
+    }
+  }
+
+  bool _isSameDate(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  DateTime _resolveCardDate(CardModel card) {
+    switch (_selectedView) {
+      case 'available':
+        return card.createdAt;
+      case 'transferred':
+        return card.transferredAt ?? card.createdAt;
+      case 'sold':
+        return card.soldAt ?? card.updatedAt;
+      default:
+        return card.createdAt;
     }
   }
 
@@ -259,7 +374,7 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
     final cardProvider = Provider.of<CardProvider>(context);
     final stats = cardProvider.stats;
     final allCards = cardProvider.cards;
-    final filteredCards = _getFilteredCards(allCards);
+    final filteredCards = _getFilteredCards(allCards, _vendorNames);
     final packageNames = _getUniquePackageNames(allCards);
 
     return Scaffold(
@@ -286,7 +401,13 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
         ],
       ),
       body: _buildInventoryContent(
-          cardProvider, stats, filteredCards, packageNames, allCards),
+        cardProvider,
+        stats,
+        filteredCards,
+        packageNames,
+        allCards,
+        _vendorNames,
+      ),
     );
   }
 
@@ -296,6 +417,7 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
     List<CardModel> filteredCards,
     List<String> packageNames,
     List<CardModel> allCards,
+    Map<String, String> vendorNames,
   ) {
     if (cardProvider.isLoading) {
       return Container(
@@ -346,7 +468,7 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
                   child: Row(
                     children: List.generate(
                       3,
-                      (index) => Expanded(
+                      (index) => const Expanded(
                         child: SkeletonBox(
                           height: 60,
                           borderRadius: 10,
@@ -368,18 +490,18 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
                         8,
                         (index) => Container(
                           padding: EdgeInsets.all(16.w),
-                          decoration: BoxDecoration(
+                          decoration: const BoxDecoration(
                             border: Border(
                               bottom: BorderSide(color: AppColors.gray200),
                             ),
                           ),
                           child: Row(
                             children: [
-                              const SkeletonLine(width: 30, height: 12),
+                              const SkeletonLine(width: 30),
                               SizedBox(width: 20.w),
-                              const SkeletonLine(width: 80, height: 12),
+                              const SkeletonLine(width: 80),
                               SizedBox(width: 20.w),
-                              const SkeletonLine(width: 100, height: 12),
+                              const SkeletonLine(width: 100),
                             ],
                           ),
                         ),
@@ -432,34 +554,43 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // إحصائيات
-              if (stats != null) _buildStats(stats, allCards),
-              SizedBox(height: 16.h),
-              // اختيار نوع العرض
               _buildViewSelector(),
-              SizedBox(height: 16.h),
-              // خيار حذف جميع كروت باقة (فقط للكروت المتاحة)
-              if (_selectedView == 'available')
-                _buildBulkDeleteSection(packageNames),
-              if (_selectedView == 'available') SizedBox(height: 16.h),
-              // جدول الكروت
-              Expanded(
-                child: RefreshIndicator(
-                  onRefresh: () async {
-                    _loadCards();
-                    await Future<void>.delayed(
-                        const Duration(milliseconds: 500));
-                  },
-                  color: AppColors.primary,
-                  child: filteredCards.isEmpty
-                      ? SingleChildScrollView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          child: SizedBox(
-                            height: MediaQuery.of(context).size.height * 0.5,
-                            child: _buildEmptyState(),
-                          ),
+              SizedBox(height: 10.h),
+              if (stats != null) ...[
+                _buildStats(stats, allCards),
+                SizedBox(height: 12.h),
+              ],
+              if (_selectedView == 'available') ...[
+                _buildBulkDeleteSection(packageNames, allCards),
+                SizedBox(height: 12.h),
+              ],
+              TextField(
+                controller: _searchController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'بحث برقم الكرت',
+                  hintText: 'أدخل رقم الكرت...',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: _searchController.clear,
                         )
-                      : _buildCardsList(filteredCards),
+                      : null,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8.r),
+                  ),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 14.w,
+                    vertical: 10.h,
+                  ),
+                ),
+              ),
+              SizedBox(height: 12.h),
+              Expanded(
+                child: _buildTableSection(
+                  filteredCards: filteredCards,
+                  vendorNames: vendorNames,
                 ),
               ),
             ],
@@ -474,56 +605,56 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
       padding: EdgeInsets.all(4.w),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12.r),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(10.r),
+        border: Border.all(color: AppColors.gray200),
       ),
       child: Row(
         children: [
           Expanded(
             child: _ViewButton(
-              label: 'الكروت المتاحة',
-              icon: Icons.inventory_2,
+              label: 'المتاحة',
               isSelected: _selectedView == 'available',
               onTap: () {
                 setState(() {
                   _selectedView = 'available';
                   _currentPage = 0;
+                  _packageFilter = null;
+                  _packageToDelete = null;
+                  _dateFilter = null;
                 });
                 _loadCards();
               },
             ),
           ),
-          SizedBox(width: 8.w),
+          SizedBox(width: 4.w),
           Expanded(
             child: _ViewButton(
-              label: 'المنقولة للمتاجر',
-              icon: Icons.send,
+              label: 'المنقولة',
               isSelected: _selectedView == 'transferred',
               onTap: () {
                 setState(() {
                   _selectedView = 'transferred';
                   _currentPage = 0;
+                  _packageFilter = null;
+                  _packageToDelete = null;
+                  _dateFilter = null;
                 });
                 _loadCards();
               },
             ),
           ),
-          SizedBox(width: 8.w),
+          SizedBox(width: 4.w),
           Expanded(
             child: _ViewButton(
               label: 'المباعة',
-              icon: Icons.sell,
               isSelected: _selectedView == 'sold',
               onTap: () {
                 setState(() {
                   _selectedView = 'sold';
                   _currentPage = 0;
+                  _packageFilter = null;
+                  _packageToDelete = null;
+                  _dateFilter = null;
                 });
                 _loadCards();
               },
@@ -535,7 +666,7 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
   }
 
   Widget _buildStats(Map<String, dynamic> stats, List<CardModel> allCards) {
-    // حساب عدد الكروت لكل باقة
+    // حساب عدد الكروت لكل باقة في التبويب الحالي
     final packageCounts = <String, int>{};
     for (final card in allCards) {
       packageCounts.update(
@@ -546,310 +677,471 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
     }
 
     // ترتيب الباقات أبجدياً
-    final sortedPackages = packageCounts.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
+    final sortedPackages = packageCounts.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
 
-    return Container(
-      padding: EdgeInsets.all(16.w),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12.r),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
+    // تحديد عنوان الإجمالي بناءً على التبويب المفتوح
+    String totalLabel;
+    Color totalColor;
+    switch (_selectedView) {
+      case 'available':
+        totalLabel = 'الإجمالي';
+        totalColor = AppColors.primary;
+      case 'transferred':
+        totalLabel = 'المنقولة';
+        totalColor = AppColors.blue500;
+      case 'sold':
+        totalLabel = 'المباعة';
+        totalColor = AppColors.success;
+      default:
+        totalLabel = 'الإجمالي';
+        totalColor = AppColors.primary;
+    }
+
+    final chips = <Widget>[
+      _StatChip(
+        label: totalLabel,
+        value: '${allCards.length}',
+        color: totalColor,
+        isSelected: _packageFilter == null,
+        onTap: () {
+          setState(() {
+            _packageFilter = null;
+            _packageToDelete = null;
+            _dateFilter = null;
+            _currentPage = 0;
+          });
+        },
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                '📊 إحصائيات المخزون',
-                style: TextStyle(
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              SizedBox(width: 12.w),
-              _StatChip(
-                label: 'الإجمالي',
-                value: '${stats['totalCards'] ?? 0}',
-                color: AppColors.primary,
-              ),
-            ],
-          ),
-          if (sortedPackages.isNotEmpty) ...[
-            SizedBox(height: 12.h),
-            Wrap(
-              spacing: 8.w,
-              runSpacing: 8.h,
-              children: sortedPackages.map((entry) {
-                return _StatChip(
-                  label: entry.key,
-                  value: '${entry.value}',
-                  color: AppColors.blue500,
-                );
-              }).toList(),
-            ),
-          ],
-        ],
+      ...sortedPackages.map(
+        (entry) => _StatChip(
+          label: entry.key,
+          value: '${entry.value}',
+          color: AppColors.blue500,
+          isSelected: _packageFilter == entry.key,
+          onTap: () {
+            setState(() {
+              if (_packageFilter == entry.key) {
+                _packageFilter = null;
+                _packageToDelete = null;
+              } else {
+                _packageFilter = entry.key;
+                _packageToDelete = entry.key;
+              }
+              _dateFilter = null;
+              _currentPage = 0;
+            });
+          },
+        ),
       ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          'الاحصائيات',
+          style: TextStyle(
+            fontSize: 12.sp,
+            fontWeight: FontWeight.w600,
+            color: AppColors.gray700,
+          ),
+        ),
+        SizedBox(height: 6.h),
+        Wrap(
+          spacing: 8.w,
+          runSpacing: 6.h,
+          children: chips,
+        ),
+      ],
     );
   }
 
-  Widget _buildBulkDeleteSection(List<String> packageNames) {
-    return Container(
-      padding: EdgeInsets.all(12.w),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12.r),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
+  Widget _buildBulkDeleteSection(List<String> packageNames, List<CardModel> allCards) {
+    final dateOptions = (_packageToDelete == null) ? <DateTime>[] : _getPackageDates(_packageToDelete!, allCards);
+    DateTime? selectedDate;
+    if (_dateFilter != null) {
+      for (final date in dateOptions) {
+        if (_isSameDate(date, _dateFilter!)) {
+          selectedDate = date;
+          break;
+        }
+      }
+    }
+    if (selectedDate == null && _dateFilter != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _dateFilter = null;
+          });
+        }
+      });
+    }
+    final isDeleteEnabled = _packageToDelete != null && selectedDate != null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                initialValue: _packageToDelete,
+                decoration: InputDecoration(
+                  labelText: 'الباقة',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8.r),
+                  ),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 10.w,
+                    vertical: 8.h,
+                  ),
+                ),
+                items: packageNames
+                    .map(
+                      (name) => DropdownMenuItem<String>(
+                        value: name,
+                        child: Text(name),
+                      ),
+                    )
+                    .toList(),
+                onChanged: packageNames.isEmpty
+                    ? null
+                    : (value) {
+                        setState(() {
+                          _packageToDelete = value;
+                          _packageFilter = value;
+                          _dateFilter = null;
+                          _currentPage = 0;
+                        });
+                      },
+              ),
+            ),
+            SizedBox(width: 8.w),
+            Expanded(
+              child: DropdownButtonFormField<DateTime>(
+                initialValue: selectedDate,
+                decoration: InputDecoration(
+                  labelText: 'التاريخ',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8.r),
+                  ),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 10.w,
+                    vertical: 8.h,
+                  ),
+                ),
+                hint: const Text('اختر التاريخ'),
+                items: dateOptions
+                    .map(
+                      (date) => DropdownMenuItem<DateTime>(
+                        value: date,
+                        child: Text(DateFormat('dd/MM/yyyy', 'ar').format(date)),
+                      ),
+                    )
+                    .toList(),
+                onChanged: dateOptions.isEmpty
+                    ? null
+                    : (value) {
+                        setState(() {
+                          _dateFilter = value;
+                          _currentPage = 0;
+                        });
+                      },
+              ),
+            ),
+            SizedBox(width: 8.w),
+            SizedBox(
+              height: 44.h,
+              child: ElevatedButton(
+                onPressed: isDeleteEnabled ? _confirmDeleteAllPackageCards : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.error,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(horizontal: 18.w),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8.r),
+                  ),
+                ),
+                child: const Text('حذف'),
+              ),
+            ),
+          ],
+        ),
+        if (dateOptions.isEmpty && _packageToDelete != null)
+          Padding(
+            padding: EdgeInsets.only(top: 6.h),
+            child: Text(
+              'لا توجد تواريخ لهذه الباقة.',
+              style: TextStyle(fontSize: 11.sp, color: AppColors.gray500),
+            ),
           ),
+      ],
+    );
+  }
+
+  List<DateTime> _getPackageDates(String packageName, List<CardModel> cards) {
+    final dates = <DateTime>{};
+    for (final card in cards) {
+      if (card.packageName != packageName) continue;
+      final referenceDate = _resolveCardDate(card);
+      dates.add(DateTime(referenceDate.year, referenceDate.month, referenceDate.day));
+    }
+    final ordered = dates.toList()..sort((a, b) => b.compareTo(a));
+    return ordered;
+  }
+
+  Widget _buildTableSection({
+    required List<CardModel> filteredCards,
+    required Map<String, String> vendorNames,
+  }) {
+    final isAvailable = _selectedView == 'available';
+    final isTransferred = _selectedView == 'transferred';
+    final isSold = _selectedView == 'sold';
+    final showVendor = isTransferred || isSold;
+    final showDate = isAvailable;
+    final showDelete = isAvailable;
+
+    final totalPages = (filteredCards.length / _rowsPerPage).ceil();
+    final maxPageIndex = totalPages == 0 ? 0 : totalPages - 1;
+    final safeCurrentPage = filteredCards.isEmpty ? 0 : _currentPage.clamp(0, maxPageIndex);
+    final startIndex = filteredCards.isEmpty ? 0 : safeCurrentPage * _rowsPerPage;
+    final endIndex = (startIndex + _rowsPerPage).clamp(0, filteredCards.length);
+    final pageCards = filteredCards.isEmpty ? <CardModel>[] : filteredCards.sublist(startIndex, endIndex);
+
+    final header = _buildTableHeader(
+      showVendor: showVendor,
+      showDate: showDate,
+      showDelete: showDelete,
+    );
+
+    Widget listView;
+    if (pageCards.isEmpty) {
+      listView = ListView(
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          SizedBox(height: MediaQuery.of(context).size.height * 0.25),
+          _buildEmptyState(),
         ],
+      );
+    } else {
+      listView = ListView.builder(
+        controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: pageCards.length,
+        itemBuilder: (context, index) {
+          final card = pageCards[index];
+          final globalIndex = startIndex + index + 1;
+          return _buildTableRow(
+            card: card,
+            globalIndex: globalIndex,
+            isEven: index.isEven,
+            showVendor: showVendor,
+            showDate: showDate,
+            showDelete: showDelete,
+            vendorNames: vendorNames,
+          );
+        },
+      );
+    }
+
+    return Column(
+      children: [
+        header,
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () async {
+              _loadCards();
+              await Future<void>.delayed(const Duration(milliseconds: 500));
+            },
+            color: AppColors.primary,
+            child: Scrollbar(
+              controller: _scrollController,
+              thumbVisibility: pageCards.length > 15,
+              child: listView,
+            ),
+          ),
+        ),
+        _buildPaginationBar(
+          currentPage: filteredCards.isEmpty ? 0 : safeCurrentPage + 1,
+          totalPages: totalPages == 0 ? 1 : totalPages,
+          totalCards: filteredCards.length,
+          startIndex: filteredCards.isEmpty ? 0 : startIndex + 1,
+          endIndex: filteredCards.isEmpty ? 0 : endIndex,
+          onFirst: safeCurrentPage > 0 ? () => _goToPage(0, maxPageIndex) : null,
+          onPrevious: safeCurrentPage > 0 ? () => _goToPage(safeCurrentPage - 1, maxPageIndex) : null,
+          onNext: safeCurrentPage < maxPageIndex ? () => _goToPage(safeCurrentPage + 1, maxPageIndex) : null,
+          onLast: safeCurrentPage < maxPageIndex ? () => _goToPage(maxPageIndex, maxPageIndex) : null,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTableHeader({
+    required bool showVendor,
+    required bool showDate,
+    required bool showDelete,
+  }) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10.r),
+        color: AppColors.gray50,
+        border: Border.all(color: AppColors.gray200),
       ),
       child: Row(
         children: [
-          Expanded(
-            child: DropdownButtonFormField<String>(
-              value: _packageToDelete,
-              decoration: InputDecoration(
-                labelText: 'حذف جميع كروت الباقة',
-                prefixIcon: Icon(Icons.delete_sweep,
-                    color: AppColors.error, size: 20.w),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8.r),
-                ),
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 12.w,
-                  vertical: 10.h,
+          _buildHeaderCell('#', flex: 1),
+          if (showVendor)
+            _buildHeaderCell(
+              'المتجر',
+              flex: 3,
+              isSortable: true,
+              ascending: _sortByVendorAscending,
+              onTap: _toggleVendorSort,
+            ),
+          _buildHeaderCell(
+            'الباقة',
+            flex: 3,
+            isSortable: true,
+            ascending: _sortByPackageAscending,
+            onTap: _togglePackageSort,
+          ),
+          _buildHeaderCell('رقم الكرت', flex: 3),
+          if (showDate) _buildHeaderCell('التاريخ', flex: 2),
+          if (showDelete)
+            SizedBox(
+              width: 40.w,
+              child: Center(
+                child: Text(
+                  'حذف',
+                  style: TextStyle(fontSize: 11.sp, color: AppColors.gray600, fontWeight: FontWeight.w600),
                 ),
               ),
-              items: packageNames
-                  .map(
-                    (name) => DropdownMenuItem<String>(
-                      value: name,
-                      child: Text(name),
-                    ),
-                  )
-                  .toList(),
-              onChanged: packageNames.isEmpty
-                  ? null
-                  : (value) {
-                      setState(() => _packageToDelete = value);
-                    },
             ),
-          ),
-          SizedBox(width: 8.w),
-          ElevatedButton.icon(
-            onPressed:
-                _packageToDelete == null ? null : _confirmDeleteAllPackageCards,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
-              foregroundColor: Colors.white,
-              padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8.r),
-              ),
-            ),
-            icon: Icon(Icons.delete_forever, size: 20.w),
-            label: Text(
-              'حذف الكل',
-              style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600),
-            ),
-          ),
         ],
       ),
     );
   }
 
-  Widget _buildCardsList(List<CardModel> cards) {
-    // حساب الترقيم (Pagination)
-    final totalPages = (cards.length / _rowsPerPage).ceil();
-    final maxPageIndex = totalPages == 0 ? 0 : totalPages - 1;
-    final safeCurrentPage =
-        cards.isEmpty ? 0 : _currentPage.clamp(0, maxPageIndex);
+  Widget _buildTableRow({
+    required CardModel card,
+    required int globalIndex,
+    required bool isEven,
+    required bool showVendor,
+    required bool showDate,
+    required bool showDelete,
+    required Map<String, String> vendorNames,
+  }) {
+    final vendorName = (card.transferredTo != null && card.transferredTo!.isNotEmpty)
+        ? vendorNames[card.transferredTo] ?? 'غير معروف'
+        : 'غير معروف';
 
-    final startIndex = cards.isEmpty ? 0 : safeCurrentPage * _rowsPerPage;
-    final endIndex = (startIndex + _rowsPerPage).clamp(0, cards.length);
-    final pageCards =
-        cards.isEmpty ? <CardModel>[] : cards.sublist(startIndex, endIndex);
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12.r),
-      child: Material(
-        color: Colors.white,
-        child: Column(
-          children: [
-            // جدول الكروت
-            Expanded(
-              child: Scrollbar(
-                controller: _scrollController,
-                thumbVisibility: pageCards.length > 10,
-                child: SingleChildScrollView(
-                  controller: _scrollController,
-                  scrollDirection: Axis.horizontal,
-                  child: SingleChildScrollView(
-                    child: DataTable(
-                      headingRowHeight: 48.h,
-                      dataRowMinHeight: 40.h,
-                      dataRowMaxHeight: 48.h,
-                      columnSpacing: 20.w,
-                      horizontalMargin: 16.w,
-                      headingRowColor:
-                          WidgetStateProperty.all(AppColors.gray50),
-                      decoration: const BoxDecoration(
-                        border: Border(
-                          bottom: BorderSide(color: AppColors.gray200),
-                        ),
-                      ),
-                      columns: [
-                        DataColumn(
-                          label: Text(
-                            '#',
-                            style: TextStyle(
-                              fontSize: 12.sp,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.gray700,
-                            ),
-                          ),
-                        ),
-                        DataColumn(
-                          label: InkWell(
-                            onTap: _togglePackageSort,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'الباقة',
-                                  style: TextStyle(
-                                    fontSize: 12.sp,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.primary,
-                                  ),
-                                ),
-                                SizedBox(width: 4.w),
-                                Icon(
-                                  _sortByPackageAscending
-                                      ? Icons.arrow_drop_up
-                                      : Icons.arrow_drop_down,
-                                  color: AppColors.primary,
-                                  size: 20.w,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        DataColumn(
-                          label: Text(
-                            'رقم الكرت',
-                            style: TextStyle(
-                              fontSize: 12.sp,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.gray700,
-                            ),
-                          ),
-                        ),
-                        DataColumn(
-                          label: Text(
-                            'حذف',
-                            style: TextStyle(
-                              fontSize: 12.sp,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.gray700,
-                            ),
-                          ),
-                        ),
-                      ],
-                      rows: pageCards.asMap().entries.map((entry) {
-                        final index = entry.key;
-                        final card = entry.value;
-                        final globalIndex = startIndex + index + 1;
-                        final isEven = index.isEven;
-
-                        return DataRow(
-                          color: WidgetStateProperty.all(
-                            isEven ? Colors.white : AppColors.gray50,
-                          ),
-                          cells: [
-                            DataCell(
-                              Text(
-                                '$globalIndex',
-                                style: TextStyle(
-                                  fontSize: 11.sp,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.gray800,
-                                ),
-                              ),
-                            ),
-                            DataCell(
-                              Text(
-                                card.packageName,
-                                style: TextStyle(
-                                  fontSize: 11.sp,
-                                  color: AppColors.gray800,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                            DataCell(
-                              Text(
-                                card.cardNumber,
-                                style: TextStyle(
-                                  fontSize: 11.sp,
-                                  fontWeight: FontWeight.w600,
-                                  fontFamily: 'monospace',
-                                  color: AppColors.gray900,
-                                ),
-                              ),
-                            ),
-                            DataCell(
-                              Center(
-                                child: IconButton(
-                                  icon: const Icon(Icons.delete_outline),
-                                  color: AppColors.error,
-                                  iconSize: 20.w,
-                                  tooltip: 'حذف الكرت',
-                                  onPressed: () => _confirmDeleteCard(card),
-                                ),
-                              ),
-                            ),
-                          ],
-                        );
-                      }).toList(),
-                    ),
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+      decoration: BoxDecoration(
+        color: isEven ? Colors.white : AppColors.gray50,
+        border: Border(
+          bottom: BorderSide(color: AppColors.gray200.withValues(alpha: 0.5)),
+        ),
+      ),
+      child: Row(
+        children: [
+          _buildDataCell('$globalIndex', flex: 1, fontWeight: FontWeight.w600),
+          if (showVendor) _buildDataCell(vendorName, flex: 3),
+          _buildDataCell(card.packageName, flex: 3),
+          _buildDataCell(card.cardNumber, flex: 3, monospace: true, fontWeight: FontWeight.w600),
+          if (showDate)
+            _buildDataCell(
+              DateFormat('dd/MM/yyyy', 'ar').format(card.createdAt),
+              flex: 2,
+            ),
+          if (showDelete)
+            SizedBox(
+              width: 52.w,
+              child: TextButton(
+                onPressed: () => _confirmDeleteCard(card),
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  foregroundColor: AppColors.error,
+                ),
+                child: Text(
+                  'حذف',
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.error,
                   ),
                 ),
               ),
             ),
-            // شريط الترقيم (Pagination)
-            _buildPaginationBar(
-              currentPage: safeCurrentPage + 1,
-              totalPages: totalPages == 0 ? 1 : totalPages,
-              totalCards: cards.length,
-              startIndex: startIndex + 1,
-              endIndex: endIndex,
-              onFirst:
-                  safeCurrentPage > 0 ? () => _goToPage(0, maxPageIndex) : null,
-              onPrevious: safeCurrentPage > 0
-                  ? () => _goToPage(safeCurrentPage - 1, maxPageIndex)
-                  : null,
-              onNext: safeCurrentPage < maxPageIndex
-                  ? () => _goToPage(safeCurrentPage + 1, maxPageIndex)
-                  : null,
-              onLast: safeCurrentPage < maxPageIndex
-                  ? () => _goToPage(maxPageIndex, maxPageIndex)
-                  : null,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeaderCell(
+    String label, {
+    required int flex,
+    bool isSortable = false,
+    bool ascending = true,
+    VoidCallback? onTap,
+  }) {
+    Widget content = Text(
+      label,
+      style: TextStyle(
+        fontSize: 11.sp,
+        fontWeight: FontWeight.w700,
+        color: isSortable ? AppColors.primary : AppColors.gray700,
+      ),
+    );
+
+    if (isSortable && onTap != null) {
+      content = InkWell(
+        onTap: onTap,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            content,
+            Icon(
+              ascending ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+              size: 18.w,
+              color: AppColors.primary,
             ),
           ],
         ),
+      );
+    }
+
+    return Expanded(
+      flex: flex,
+      child: Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: content,
+      ),
+    );
+  }
+
+  Widget _buildDataCell(
+    String value, {
+    required int flex,
+    FontWeight fontWeight = FontWeight.w500,
+    bool monospace = false,
+  }) {
+    return Expanded(
+      flex: flex,
+      child: Text(
+        value,
+        style: TextStyle(
+          fontSize: 11.sp,
+          fontWeight: fontWeight,
+          color: AppColors.gray800,
+          fontFamily: monospace ? 'monospace' : null,
+        ),
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }
@@ -866,53 +1158,31 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
     required VoidCallback? onLast,
   }) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
-      decoration: const BoxDecoration(
-        color: AppColors.gray50,
-        border: Border(
-          top: BorderSide(color: AppColors.gray200),
-        ),
-      ),
-      child: Wrap(
-        alignment: WrapAlignment.spaceBetween,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: 12.w,
-        runSpacing: 8.h,
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
+          Wrap(
+            spacing: 12.w,
+            runSpacing: 8.h,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
                 'عرض $startIndex-$endIndex من $totalCards',
-                style: TextStyle(
-                  fontSize: 12.sp,
-                  color: AppColors.gray600,
-                ),
+                style: TextStyle(fontSize: 11.sp, color: AppColors.gray600),
               ),
-              SizedBox(width: 12.w),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 8.w),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8.r),
-                  border: Border.all(color: AppColors.gray300),
-                ),
+              DropdownButtonHideUnderline(
                 child: DropdownButton<int>(
                   value: _rowsPerPage,
-                  underline: const SizedBox.shrink(),
-                  isDense: true,
-                  items: _rowsPerPageOptions.map((value) {
-                    return DropdownMenuItem<int>(
-                      value: value,
-                      child: Text(
-                        '$value / صفحة',
-                        style: TextStyle(
-                          fontSize: 11.sp,
-                          color: AppColors.gray800,
+                  items: _rowsPerPageOptions
+                      .map(
+                        (value) => DropdownMenuItem<int>(
+                          value: value,
+                          child: Text('$value صف', style: TextStyle(fontSize: 11.sp)),
                         ),
-                      ),
-                    );
-                  }).toList(),
+                      )
+                      .toList(),
                   onChanged: (value) {
                     if (value != null) {
                       setState(() {
@@ -925,54 +1195,47 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
               ),
             ],
           ),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.first_page),
-                iconSize: 20.w,
-                onPressed: onFirst,
-                color: onFirst != null ? AppColors.primary : AppColors.gray400,
-                tooltip: 'الصفحة الأولى',
-              ),
-              IconButton(
-                icon: const Icon(Icons.chevron_right),
-                iconSize: 20.w,
-                onPressed: onPrevious,
-                color:
-                    onPrevious != null ? AppColors.primary : AppColors.gray400,
-                tooltip: 'السابق',
-              ),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8.r),
+          SizedBox(height: 8.h),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              spacing: 4.w,
+              runSpacing: 4.h,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.first_page),
+                  onPressed: onFirst,
+                  color: onFirst != null ? AppColors.primary : AppColors.gray400,
                 ),
-                child: Text(
-                  'صفحة $currentPage من $totalPages',
-                  style: TextStyle(
-                    fontSize: 11.sp,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primary,
+                IconButton(
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: onPrevious,
+                  color: onPrevious != null ? AppColors.primary : AppColors.gray400,
+                ),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6.r),
+                  ),
+                  child: Text(
+                    '$currentPage / $totalPages',
+                    style: TextStyle(fontSize: 11.sp, color: AppColors.primary, fontWeight: FontWeight.w600),
                   ),
                 ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.chevron_left),
-                iconSize: 20.w,
-                onPressed: onNext,
-                color: onNext != null ? AppColors.primary : AppColors.gray400,
-                tooltip: 'التالي',
-              ),
-              IconButton(
-                icon: const Icon(Icons.last_page),
-                iconSize: 20.w,
-                onPressed: onLast,
-                color: onLast != null ? AppColors.primary : AppColors.gray400,
-                tooltip: 'الصفحة الأخيرة',
-              ),
-            ],
+                IconButton(
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: onNext,
+                  color: onNext != null ? AppColors.primary : AppColors.gray400,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.last_page),
+                  onPressed: onLast,
+                  color: onLast != null ? AppColors.primary : AppColors.gray400,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -987,15 +1250,12 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
       case 'available':
         icon = Icons.inventory_2_outlined;
         message = 'لا توجد كروت متاحة\nقم باستيراد الكروت أولاً';
-        break;
       case 'transferred':
         icon = Icons.send_outlined;
         message = 'لا توجد كروت منقولة\nالكروت المنقولة للمتاجر ستظهر هنا';
-        break;
       case 'sold':
         icon = Icons.sell_outlined;
         message = 'لا توجد كروت مباعة\nالكروت المباعة من قبل المتاجر ستظهر هنا';
-        break;
       default:
         icon = Icons.inventory_2_outlined;
         message = 'لا توجد كروت';
@@ -1021,46 +1281,36 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
 class _ViewButton extends StatelessWidget {
   const _ViewButton({
     required this.label,
-    required this.icon,
     required this.isSelected,
     required this.onTap,
   });
 
   final String label;
-  final IconData icon;
   final bool isSelected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final background = isSelected ? AppColors.primary : Colors.transparent;
+    final textColor = isSelected ? Colors.white : AppColors.gray600;
+
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10.r),
+      borderRadius: BorderRadius.circular(8.r),
       child: Container(
-        padding: EdgeInsets.symmetric(vertical: 12.h),
+        padding: EdgeInsets.symmetric(vertical: 10.h),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary : Colors.transparent,
-          borderRadius: BorderRadius.circular(10.r),
+          color: background,
+          borderRadius: BorderRadius.circular(8.r),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 20.w,
-              color: isSelected ? Colors.white : AppColors.gray600,
-            ),
-            SizedBox(height: 4.h),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11.sp,
-                fontWeight: FontWeight.w600,
-                color: isSelected ? Colors.white : AppColors.gray600,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12.sp,
+            fontWeight: FontWeight.w600,
+            color: textColor,
+          ),
         ),
       ),
     );
@@ -1072,41 +1322,55 @@ class _StatChip extends StatelessWidget {
     required this.label,
     required this.value,
     required this.color,
+    this.onTap,
+    this.isSelected = false,
   });
 
   final String label;
   final String value;
   final Color color;
+  final VoidCallback? onTap;
+  final bool isSelected;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(10.r),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            '$label: ',
-            style: TextStyle(
-              fontSize: 11.sp,
-              fontWeight: FontWeight.w600,
-              color: color,
-            ),
+    final backgroundColor = isSelected ? color.withValues(alpha: 0.18) : color.withValues(alpha: 0.12);
+    final borderColor = isSelected ? color : color.withValues(alpha: 0.4);
+    final textColor = isSelected ? color : color.withValues(alpha: 0.85);
+
+    final content = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '$label: ',
+          style: TextStyle(
+            fontSize: 11.sp,
+            fontWeight: FontWeight.w600,
+            color: textColor,
           ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 11.sp,
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 11.sp,
+            fontWeight: FontWeight.w700,
+            color: textColor,
           ),
-        ],
+        ),
+      ],
+    );
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10.r),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(10.r),
+          border: Border.all(color: borderColor),
+        ),
+        child: content,
       ),
     );
   }

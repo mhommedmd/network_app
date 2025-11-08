@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
@@ -28,6 +30,7 @@ class _NetworkSearchPageState extends State<NetworkSearchPage> {
   List<NetworkConnectionModel> _searchResults = [];
   bool _isLoading = false;
   bool _isSearching = false;
+  Timer? _debounce;
 
   @override
   void initState() {
@@ -37,8 +40,18 @@ class _NetworkSearchPageState extends State<NetworkSearchPage> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  // دالة للبحث مع debouncing لتحسين الأداء
+  void _onSearchChanged(String value) {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      _performSearch();
+    });
   }
 
   Future<void> _loadGovernorates() async {
@@ -50,7 +63,7 @@ class _NetworkSearchPageState extends State<NetworkSearchPage> {
         _governorates = governorates;
         _isLoading = false;
       });
-    } catch (e) {
+    } on Exception catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
         final errorMessage = ErrorHandler.extractErrorMessage(e);
@@ -74,7 +87,7 @@ class _NetworkSearchPageState extends State<NetworkSearchPage> {
           _selectedDistrict = null;
         }
       });
-    } catch (e) {
+    } on Exception catch (e) {
       if (mounted) {
         final errorMessage = ErrorHandler.extractErrorMessage(e);
         CustomToast.error(
@@ -106,7 +119,7 @@ class _NetworkSearchPageState extends State<NetworkSearchPage> {
         _searchResults = results;
         _isSearching = false;
       });
-    } catch (e) {
+    } on Exception catch (e) {
       setState(() => _isSearching = false);
       if (mounted) {
         final errorMessage = ErrorHandler.extractErrorMessage(e);
@@ -160,7 +173,7 @@ class _NetworkSearchPageState extends State<NetworkSearchPage> {
       setState(() {
         _searchResults.removeWhere((n) => n.networkId == network.networkId);
       });
-    } catch (e) {
+    } on Exception catch (e) {
       if (!mounted) return;
       Navigator.of(context).pop();
 
@@ -203,7 +216,7 @@ class _NetworkSearchPageState extends State<NetworkSearchPage> {
               padding: EdgeInsets.all(16.w),
               child: Column(
                 children: [
-                  // حقل البحث
+                  // حقل البحث مع debouncing للأداء
                   TextField(
                     controller: _searchController,
                     textDirection: TextDirection.rtl,
@@ -216,13 +229,13 @@ class _NetworkSearchPageState extends State<NetworkSearchPage> {
                       filled: true,
                       fillColor: AppColors.gray50,
                     ),
-                    onChanged: (_) => _performSearch(),
+                    onChanged: _onSearchChanged,
                   ),
                   SizedBox(height: 12.h),
 
                   // اختيار المحافظة
                   DropdownButtonFormField<String?>(
-                    value: _selectedGovernorate,
+                    initialValue: _selectedGovernorate,
                     decoration: InputDecoration(
                       labelText: 'المحافظة',
                       prefixIcon: const Icon(Icons.location_city),
@@ -234,7 +247,6 @@ class _NetworkSearchPageState extends State<NetworkSearchPage> {
                     ),
                     items: [
                       const DropdownMenuItem<String?>(
-                        value: null,
                         child: Text('كل المحافظات'),
                       ),
                       ..._governorates.map(
@@ -260,7 +272,7 @@ class _NetworkSearchPageState extends State<NetworkSearchPage> {
 
                   // اختيار المديرية
                   DropdownButtonFormField<String?>(
-                    value: _selectedDistrict,
+                    initialValue: _selectedDistrict,
                     decoration: InputDecoration(
                       labelText: 'المديرية',
                       prefixIcon: const Icon(Icons.place),
@@ -272,7 +284,6 @@ class _NetworkSearchPageState extends State<NetworkSearchPage> {
                     ),
                     items: [
                       const DropdownMenuItem<String?>(
-                        value: null,
                         child: Text('كل المديريات'),
                       ),
                       ..._districts.map(
@@ -446,7 +457,6 @@ class _NetworkSearchCard extends StatelessWidget {
           // زر الإضافة
           AppButton(
             text: 'إضافة',
-            variant: AppButtonVariant.primary,
             size: AppButtonSize.small,
             icon: Icon(Icons.add, size: 18.w, color: Colors.white),
             onPressed: onAdd,

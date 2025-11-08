@@ -8,9 +8,9 @@ import '../../../../core/providers/auth_provider.dart';
 import '../../../../core/providers/language_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/ui_tokens.dart';
+import '../../../../core/utils/phone_utils.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../../../shared/widgets/app_card.dart';
-import '../../../../shared/widgets/user_type_selector.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -24,7 +24,6 @@ class _LoginPageState extends State<LoginPage> {
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
-  UserType _selectedType = UserType.networkOwner;
 
   @override
   void dispose() {
@@ -38,41 +37,7 @@ class _LoginPageState extends State<LoginPage> {
       return 'رقم الهاتف مطلوب';
     }
 
-    final phoneDigits = value.replaceAll(RegExp(r'[\s-]'), '');
-    final validPrefixes = [
-      '777',
-      '773',
-      '770',
-      '771',
-      '772',
-      '774',
-      '775',
-      '776',
-      '778',
-      '779',
-      '733',
-      '734',
-      '735',
-      '736',
-      '737',
-      '738',
-      '739',
-      '730',
-      '731',
-      '732',
-      '780',
-      '781',
-      '782',
-      '783',
-      '784',
-      '785',
-      '786',
-      '787',
-      '788',
-      '789',
-    ];
-
-    if (phoneDigits.length != 9 || !validPrefixes.any(phoneDigits.startsWith)) {
+    if (!PhoneUtils.isValidYemeniPhone(value)) {
       return 'يرجى إدخال رقم هاتف يمني صحيح';
     }
 
@@ -99,7 +64,6 @@ class _LoginPageState extends State<LoginPage> {
     final success = await authProvider.login(
       phone: _phoneController.text.trim(),
       password: _passwordController.text,
-      userType: _selectedType,
     );
 
     if (!mounted) return; // Guard against using context if widget disposed
@@ -189,20 +153,6 @@ class _LoginPageState extends State<LoginPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // User Type Toggle
-                        Text(
-                          'تسجيل الدخول كـ',
-                          style: AppTypography.body.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.gray700,
-                          ),
-                        ),
-                        SizedBox(height: 12.h),
-                        UserTypeSelector(
-                          value: _selectedType,
-                          onChanged: (v) => setState(() => _selectedType = v),
-                        ),
-                        SizedBox(height: 24.h),
                         // Phone Field
                         TextFormField(
                           controller: _phoneController,
@@ -234,9 +184,7 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                             suffixIcon: IconButton(
                               icon: Icon(
-                                _obscurePassword
-                                    ? Icons.visibility_off
-                                    : Icons.visibility,
+                                _obscurePassword ? Icons.visibility_off : Icons.visibility,
                                 color: AppColors.gray500,
                               ),
                               onPressed: () {
@@ -279,8 +227,7 @@ class _LoginPageState extends State<LoginPage> {
                         // Login Button
                         AppButton(
                           text: languageProvider.login,
-                          onPressed:
-                              authProvider.isLoading ? null : _handleLogin,
+                          onPressed: authProvider.isLoading ? null : _handleLogin,
                           loading: authProvider.isLoading,
                           fullWidth: true,
                           size: AppButtonSize.large,

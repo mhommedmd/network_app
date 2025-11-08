@@ -1,15 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class SaleModel {
-  final String id;
-  final String vendorId;
-  final String networkId;
-  final String networkName;
-  final Map<String, List<String>> packageCodes; // packageName -> [cardNumbers]
-  final double totalAmount;
-  final String? customerPhone;
-  final DateTime soldAt;
-  final int totalCards;
 
   SaleModel({
     required this.id,
@@ -18,13 +9,11 @@ class SaleModel {
     required this.networkName,
     required this.packageCodes,
     required this.totalAmount,
-    this.customerPhone,
-    required this.soldAt,
-    required this.totalCards,
+    required this.soldAt, required this.totalCards, this.customerPhone,
   });
 
   factory SaleModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = doc.data()! as Map<String, dynamic>;
 
     // تحويل packageCodes من Map<String, dynamic> إلى Map<String, List<String>>
     final packageCodesData =
@@ -49,6 +38,15 @@ class SaleModel {
       totalCards: data['totalCards'] as int? ?? 0,
     );
   }
+  final String id;
+  final String vendorId;
+  final String networkId;
+  final String networkName;
+  final Map<String, List<String>> packageCodes; // packageName -> [cardNumbers]
+  final double totalAmount;
+  final String? customerPhone;
+  final DateTime soldAt;
+  final int totalCards;
 
   Map<String, dynamic> toJson() {
     return {

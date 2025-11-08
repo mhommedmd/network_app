@@ -32,14 +32,14 @@ class CacheService {
 
     try {
       return jsonDecode(data) as Map<String, dynamic>;
-    } catch (e) {
+    } on Exception {
       return null;
     }
   }
 
   /// حفظ قائمة الشبكات للمتجر
   static Future<void> saveNetworks(
-      String vendorId, List<Map<String, dynamic>> networks) async {
+      String vendorId, List<Map<String, dynamic>> networks,) async {
     final prefs = await SharedPreferences.getInstance();
     final key = '${_networksKey}_$vendorId';
     await prefs.setString(key, jsonEncode(networks));
@@ -48,7 +48,7 @@ class CacheService {
 
   /// جلب قائمة الشبكات للمتجر
   static Future<List<Map<String, dynamic>>?> getNetworks(
-      String vendorId) async {
+      String vendorId,) async {
     final key = '${_networksKey}_$vendorId';
     if (!await _isCacheValid(key)) {
       return null;
@@ -64,14 +64,14 @@ class CacheService {
         return decoded.cast<Map<String, dynamic>>();
       }
       return null;
-    } catch (e) {
+    } on Exception {
       return null;
     }
   }
 
   /// حفظ قائمة الباقات للشبكة
   static Future<void> savePackages(
-      String networkId, List<Map<String, dynamic>> packages) async {
+      String networkId, List<Map<String, dynamic>> packages,) async {
     final prefs = await SharedPreferences.getInstance();
     final key = '${_packagesKey}_$networkId';
     await prefs.setString(key, jsonEncode(packages));
@@ -80,7 +80,7 @@ class CacheService {
 
   /// جلب قائمة الباقات للشبكة
   static Future<List<Map<String, dynamic>>?> getPackages(
-      String networkId) async {
+      String networkId,) async {
     final key = '${_packagesKey}_$networkId';
     if (!await _isCacheValid(key)) {
       return null;
@@ -96,14 +96,14 @@ class CacheService {
         return decoded.cast<Map<String, dynamic>>();
       }
       return null;
-    } catch (e) {
+    } on Exception {
       return null;
     }
   }
 
   /// حفظ المخزون للمتجر
   static Future<void> saveInventory(
-      String vendorId, Map<String, dynamic> inventory) async {
+      String vendorId, Map<String, dynamic> inventory,) async {
     final prefs = await SharedPreferences.getInstance();
     final key = '${_inventoryKey}_$vendorId';
     await prefs.setString(key, jsonEncode(inventory));
@@ -123,7 +123,7 @@ class CacheService {
 
     try {
       return jsonDecode(data) as Map<String, dynamic>;
-    } catch (e) {
+    } on Exception {
       return null;
     }
   }
@@ -135,10 +135,10 @@ class CacheService {
     await prefs.remove('${_networksKey}_$userId');
     await prefs.remove('${_packagesKey}_$userId');
     await prefs.remove('${_inventoryKey}_$userId');
-    await prefs.remove('${_timestampKey}${_userDataKey}');
-    await prefs.remove('${_timestampKey}${_networksKey}_$userId');
-    await prefs.remove('${_timestampKey}${_packagesKey}_$userId');
-    await prefs.remove('${_timestampKey}${_inventoryKey}_$userId');
+    await prefs.remove('$_timestampKey$_userDataKey');
+    await prefs.remove('$_timestampKey${_networksKey}_$userId');
+    await prefs.remove('$_timestampKey${_packagesKey}_$userId');
+    await prefs.remove('$_timestampKey${_inventoryKey}_$userId');
   }
 
   /// حذف جميع البيانات المخزنة

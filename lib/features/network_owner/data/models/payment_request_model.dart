@@ -23,7 +23,7 @@ class PaymentRequestModel {
   });
 
   factory PaymentRequestModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = doc.data()! as Map<String, dynamic>;
     return PaymentRequestModel(
       id: doc.id,
       vendorId: data['vendorId'] as String? ?? '',

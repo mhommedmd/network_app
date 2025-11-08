@@ -17,6 +17,11 @@ class FirebaseSaleService {
     final soldCards = <String, List<String>>{};
 
     try {
+      print('🛒 بدء عملية البيع...');
+      print('   - vendorId: $vendorId');
+      print('   - networkId: $networkId');
+      print('   - الباقات المطلوبة: $packageQuantities');
+      
       // تنفيذ عملية البيع داخل Transaction
       await _firestore.runTransaction((transaction) async {
         for (final entry in packageQuantities.entries) {
@@ -24,6 +29,8 @@ class FirebaseSaleService {
           final quantity = entry.value;
 
           if (quantity <= 0) continue;
+
+          print('📦 معالجة باقة: $packageId، الكمية: $quantity');
 
           // جلب الكروت المتاحة لهذه الباقة
           final cardsQuery = await _firestore
@@ -34,6 +41,8 @@ class FirebaseSaleService {
               .where('status', isEqualTo: 'available')
               .limit(quantity)
               .get();
+          
+          print('   ✅ وجد ${cardsQuery.docs.length} كرت متاح');
 
           if (cardsQuery.docs.length < quantity) {
             throw Exception(
@@ -43,12 +52,15 @@ class FirebaseSaleService {
 
           final cardNumbers = <String>[];
 
-          // تحديث حالة الكروت إلى sold
+          // تحديث حالة الكروت إلى sold في vendor_cards
           for (final cardDoc in cardsQuery.docs) {
             final cardData = cardDoc.data();
             final cardNumber = cardData['cardNumber'] as String;
             cardNumbers.add(cardNumber);
 
+            print('   🔄 تحديث كرت: $cardNumber');
+
+            // تحديث vendor_cards
             transaction.update(
               cardDoc.reference,
               {
@@ -57,19 +69,55 @@ class FirebaseSaleService {
                 'soldTo': customerPhone ?? 'غير محدد',
               },
             );
+            
+            print('      ✅ vendor_cards تم التحديث');
+            
+            // ✅ تحديث الكرت في cards collection أيضاً (مهم!)
+            // للانتقال من 'transferred' إلى 'sold' في المخزون
+            try {
+              final networkCardsQuery = await _firestore
+                  .collection('cards')
+                  .where('networkId', isEqualTo: networkId)
+                  .where('cardNumber', isEqualTo: cardNumber)
+                  .limit(1)
+                  .get();
+              
+              print('      📊 البحث في cards: وجد ${networkCardsQuery.docs.length} مستند');
+              
+              if (networkCardsQuery.docs.isNotEmpty) {
+                final networkCardDoc = networkCardsQuery.docs.first;
+                final networkCardData = networkCardDoc.data();
+                
+                print('      📄 حالة الكرت الحالية: ${networkCardData['status']}');
+                
+                transaction.update(
+                  networkCardDoc.reference,
+                  {
+                    'status': 'sold',
+                    'soldAt': FieldValue.serverTimestamp(),
+                    'soldTo': customerPhone ?? 'غير محدد',
+                  },
+                );
+                
+                print('      ✅ cards تم التحديث');
+              } else {
+                print('      ⚠️ لم يتم العثور على الكرت في cards collection');
+              }
+            } catch (e) {
+              print('      ❌ خطأ في تحديث cards: $e');
+              rethrow;
+            }
           }
 
           // تخزين أرقام الكروت حسب اسم الباقة
-          final packageName =
-              cardsQuery.docs.first.data()['packageName'] as String? ?? 'باقة';
+          final packageName = cardsQuery.docs.first.data()['packageName'] as String? ?? 'باقة';
           soldCards[packageName] = cardNumbers;
         }
       });
 
       // تسجيل عملية البيع في مجموعة sales (خارج Transaction)
       final totalCards = soldCards.values.expand((cards) => cards).length;
-      final totalAmount =
-          await _calculateTotalAmount(packageQuantities, networkId);
+      final totalAmount = await _calculateTotalAmount(packageQuantities, networkId);
 
       await _recordSale(
         vendorId: vendorId,
@@ -81,8 +129,17 @@ class FirebaseSaleService {
         totalCards: totalCards,
       );
 
+      print('✅ اكتملت عملية البيع بنجاح');
+      print('   - إجمالي الكروت المباعة: ${soldCards.values.expand((c) => c).length}');
+      
       return soldCards;
-    } catch (e) {
+    } on FirebaseException catch (e) {
+      print('❌ Firebase خطأ في البيع:');
+      print('   - الكود: ${e.code}');
+      print('   - الرسالة: ${e.message}');
+      throw Exception('فشل في بيع الكروت: ${e.message}');
+    } on Exception catch (e) {
+      print('❌ خطأ عام في البيع: $e');
       throw Exception('فشل في بيع الكروت: $e');
     }
   }
@@ -109,8 +166,8 @@ class FirebaseSaleService {
 
       final snapshot = await query.get();
 
-      return snapshot.docs.map((doc) => CardModel.fromFirestore(doc)).toList();
-    } catch (e) {
+      return snapshot.docs.map(CardModel.fromFirestore).toList();
+    } on Exception catch (e) {
       throw Exception('فشل في جلب الكروت المتاحة: $e');
     }
   }
@@ -122,8 +179,8 @@ class FirebaseSaleService {
     required String networkName,
     required Map<String, List<String>> packageCodes,
     required double totalAmount,
-    String? customerPhone,
     required int totalCards,
+    String? customerPhone,
   }) async {
     try {
       final now = DateTime.now();
@@ -140,8 +197,9 @@ class FirebaseSaleService {
 
       // طباعة للتأكد من التسجيل
       print(
-          '✅ Sale recorded: vendorId=$vendorId, totalAmount=$totalAmount, totalCards=$totalCards');
-    } catch (e) {
+        '✅ Sale recorded: vendorId=$vendorId, totalAmount=$totalAmount, totalCards=$totalCards',
+      );
+    } on Exception catch (e) {
       print('❌ Error recording sale: $e');
       throw Exception('فشل في تسجيل البيع: $e');
     }
@@ -149,9 +207,11 @@ class FirebaseSaleService {
 
   /// حساب المبلغ الإجمالي للبيع
   static Future<double> _calculateTotalAmount(
-      Map<String, int> packageQuantities, String networkId) async {
+    Map<String, int> packageQuantities,
+    String networkId,
+  ) async {
     try {
-      double totalAmount = 0.0;
+      var totalAmount = 0.0;
 
       for (final entry in packageQuantities.entries) {
         final packageId = entry.key;
@@ -160,23 +220,22 @@ class FirebaseSaleService {
         if (quantity <= 0) continue;
 
         // جلب سعر الباقة من Firebase
-        final packageDoc =
-            await _firestore.collection('packages').doc(packageId).get();
+        final packageDoc = await _firestore.collection('packages').doc(packageId).get();
 
         if (packageDoc.exists) {
           final packageData = packageDoc.data()!;
-          final sellingPrice =
-              (packageData['sellingPrice'] as num?)?.toDouble() ?? 0.0;
+          final sellingPrice = (packageData['sellingPrice'] as num?)?.toDouble() ?? 0.0;
           final packageAmount = sellingPrice * quantity;
-          totalAmount += packageAmount;
+          totalAmount = totalAmount + packageAmount;
           print(
-              '💵 Package: $packageId, price: $sellingPrice x $quantity = $packageAmount');
+            '💵 Package: $packageId, price: $sellingPrice x $quantity = $packageAmount',
+          );
         }
       }
 
       print('💰 Total calculated amount: $totalAmount');
       return totalAmount;
-    } catch (e) {
+    } on Exception catch (e) {
       print('❌ Error calculating total amount: $e');
       return 0.0;
     }
@@ -199,7 +258,7 @@ class FirebaseSaleService {
       final sales = snapshot.docs.map((doc) {
         try {
           return SaleModel.fromFirestore(doc);
-        } catch (e) {
+        } on Exception catch (e) {
           print('❌ Error parsing sale ${doc.id}: $e');
           rethrow;
         }
@@ -215,7 +274,7 @@ class FirebaseSaleService {
       final doc = await _firestore.collection('sales').doc(saleId).get();
       if (!doc.exists) return null;
       return SaleModel.fromFirestore(doc);
-    } catch (e) {
+    } on Exception catch (e) {
       throw Exception('فشل في جلب تفاصيل البيع: $e');
     }
   }

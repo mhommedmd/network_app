@@ -13,7 +13,7 @@ class FirebaseVendorTransactionService {
     required String networkId,
   }) {
     print(
-        '🔍 Setting up transactions stream: vendorId=$vendorId, networkId=$networkId');
+        '🔍 Setting up transactions stream: vendorId=$vendorId, networkId=$networkId',);
 
     return _firestore
         .collection(_collection)
@@ -23,11 +23,11 @@ class FirebaseVendorTransactionService {
         .snapshots()
         .map((snapshot) {
       print(
-          '📥 Transactions snapshot received: ${snapshot.docs.length} transactions');
+          '📥 Transactions snapshot received: ${snapshot.docs.length} transactions',);
 
       final transactions = snapshot.docs.map((doc) {
         print(
-            '   - Transaction: ${doc.id}, type: ${doc.data()['type']}, amount: ${doc.data()['amount']}');
+            '   - Transaction: ${doc.id}, type: ${doc.data()['type']}, amount: ${doc.data()['amount']}',);
         return VendorTransactionModel.fromFirestore(doc);
       }).toList();
 
@@ -43,7 +43,7 @@ class FirebaseVendorTransactionService {
   }) async {
     try {
       print(
-          '🔍 Calculating account summary: vendorId=$vendorId, networkId=$networkId');
+          '🔍 Calculating account summary: vendorId=$vendorId, networkId=$networkId',);
 
       final snapshot = await _firestore
           .collection(_collection)
@@ -67,7 +67,8 @@ class FirebaseVendorTransactionService {
         if (type == 'charge') {
           totalCharges += amount;
         } else if (type == 'payment') {
-          totalPayments += amount;
+          // المدفوعات محفوظة بقيمة سالبة في قاعدة البيانات، نستخدم القيمة المطلقة
+          totalPayments += amount.abs();
         }
       }
 
@@ -75,14 +76,14 @@ class FirebaseVendorTransactionService {
       final balance = totalCharges - totalPayments;
 
       print(
-          '💰 Summary: charges=$totalCharges, payments=$totalPayments, balance=$balance');
+          '💰 Summary: charges=$totalCharges, payments=$totalPayments, balance=$balance',);
 
       return {
         'balance': balance,
         'totalCharges': totalCharges,
         'totalPayments': totalPayments,
       };
-    } catch (e) {
+    } on Exception catch (e) {
       print('❌ Error calculating summary: $e');
       return {
         'balance': 0,

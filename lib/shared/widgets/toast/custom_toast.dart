@@ -36,9 +36,7 @@ class CustomToast {
     Overlay.of(context).insert(_overlayEntry!);
 
     // إخفاء تلقائي بعد المدة المحددة
-    Future.delayed(duration, () {
-      hide();
-    });
+    Future.delayed(duration, hide);
   }
 
   /// إخفاء Toast
@@ -79,7 +77,7 @@ class CustomToast {
   }
 
   static void info(BuildContext context, String message, {String? title}) {
-    show(context, message: message, type: ToastType.info, title: title);
+    show(context, message: message, title: title);
   }
 }
 
@@ -126,19 +124,19 @@ class _ToastWidgetState extends State<_ToastWidget>
 
     // أنيميشن الشفافية
     _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
+      begin: 0,
+      end: 1,
     ).animate(
       CurvedAnimation(
         parent: _controller,
-        curve: const Interval(0.0, 0.5, curve: Curves.easeOut),
+        curve: const Interval(0, 0.5, curve: Curves.easeOut),
       ),
     );
 
     // أنيميشن التكبير
     _scaleAnimation = Tween<double>(
       begin: 0.8,
-      end: 1.0,
+      end: 1,
     ).animate(
       CurvedAnimation(
         parent: _controller,
@@ -227,13 +225,12 @@ class _ToastWidgetState extends State<_ToastWidget>
                   borderRadius: BorderRadius.circular(16.r),
                   boxShadow: [
                     BoxShadow(
-                      color: bgColor.withOpacity(0.3),
+                      color: bgColor.withValues(alpha: 0.3),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
-                      spreadRadius: 0,
                     ),
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: Colors.black.withValues(alpha: 0.1),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -249,7 +246,7 @@ class _ToastWidgetState extends State<_ToastWidget>
                         width: 48.w,
                         height: 48.w,
                         decoration: BoxDecoration(
-                          color: bgColor.withOpacity(0.15),
+                          color: bgColor.withValues(alpha: 0.15),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
@@ -295,12 +292,10 @@ class _ToastWidgetState extends State<_ToastWidget>
 
                       // زر الإغلاق
                       GestureDetector(
-                        onTap: () {
-                          CustomToast.hide();
-                        },
+                        onTap: CustomToast.hide,
                         child: Container(
                           padding: EdgeInsets.all(4.w),
-                          decoration: BoxDecoration(
+                          decoration: const BoxDecoration(
                             color: AppColors.gray200,
                             shape: BoxShape.circle,
                           ),

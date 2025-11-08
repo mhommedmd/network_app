@@ -4,7 +4,7 @@ class ErrorHandler {
   static String extractErrorMessage(dynamic error) {
     if (error == null) return 'حدث خطأ غير متوقع';
 
-    String errorMessage = error.toString();
+    var errorMessage = error.toString();
 
     // إزالة "Exception: " من البداية والمتكررة
     errorMessage = errorMessage

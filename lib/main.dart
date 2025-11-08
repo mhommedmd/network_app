@@ -1,9 +1,9 @@
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_app_check/firebase_app_check.dart';
 
 // Relative imports for local files (lint: prefer_relative_imports)
 import 'core/localization/app_localizations.dart';
@@ -11,8 +11,8 @@ import 'core/providers/auth_provider.dart';
 import 'core/providers/language_provider.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
-import 'features/network_owner/data/providers/package_provider.dart';
 import 'features/network_owner/data/providers/card_provider.dart';
+import 'features/network_owner/data/providers/package_provider.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -20,8 +20,13 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  
+  // تفعيل App Check مع Debug Provider للتطوير
   await FirebaseAppCheck.instance.activate(
+    // استخدام Debug provider في التطوير
     androidProvider: AndroidProvider.debug,
+    // في Production، استبدل بـ:
+    // androidProvider: AndroidProvider.playIntegrity,
     appleProvider: AppleProvider.debug,
   );
   SystemChrome.setSystemUIOverlayStyle(

@@ -7,64 +7,149 @@ class FirebaseVendorService {
   static const String _collection = 'vendors';
 
   /// إضافة متجر جديد
+  /// يستخدم composite key: {networkId}_{vendorId} للسماح بتعدد الشبكات
   static Future<String> addVendor(VendorModel vendor) async {
     try {
       final vendorData = vendor.toJson();
-      // حفظ user ID أيضاً في document
-      vendorData['userId'] = vendor.id;
+      // حفظ user ID الحقيقي في document
+      vendorData['userId'] = vendor.realUserId;
 
-      print('💾 محاولة حفظ المتجر في Firestore...');
-      print('   Collection: $_collection');
-      print('   User ID: ${vendor.id}');
-      print('   Data: $vendorData');
+      // استخدام composite key: networkId_vendorId
+      // هذا يسمح لنفس المتجر بالانضمام لعدة شبكات
+      final documentId = '${vendor.networkId}_${vendor.realUserId}';
 
-      // استخدام user ID كـ document ID مباشرة
-      await _firestore.collection(_collection).doc(vendor.id).set(vendorData);
+      await _firestore.collection(_collection).doc(documentId).set(vendorData);
 
-      print('✅ تم حفظ المتجر بنجاح - Document ID = User ID: ${vendor.id}');
+      // إنشاء اتصال في network_connections (مهم جداً لعرض الرصيد!)
+      await _createNetworkConnection(vendor);
 
-      return vendor.id;
+      return documentId;
     } on FirebaseException catch (e) {
-      print('❌ Firebase Error:');
-      print('   Code: ${e.code}');
-      print('   Message: ${e.message}');
       throw Exception('فشل في إضافة المتجر: [${e.code}] ${e.message}');
-    } catch (e) {
-      print('❌ خطأ غير متوقع: $e');
+    } on Exception catch (e) {
       throw Exception('فشل في إضافة المتجر: $e');
     }
   }
 
-  /// تحديث معلومات متجر
+  /// إنشاء اتصال بين المتجر والشبكة في network_connections
+  static Future<void> _createNetworkConnection(VendorModel vendor) async {
+    try {
+      // التحقق من وجود اتصال مسبق
+      final existingConnection = await _firestore
+          .collection('network_connections')
+          .where('vendorId', isEqualTo: vendor.realUserId)
+          .where('networkId', isEqualTo: vendor.networkId)
+          .limit(1)
+          .get();
+      
+      // إذا كان الاتصال موجوداً مسبقاً، لا نضيفه مرة أخرى
+      if (existingConnection.docs.isNotEmpty) {
+        return;
+      }
+      
+      // جلب بيانات المستخدم (vendor) من users collection
+      final userDoc = await _firestore.collection('users').doc(vendor.realUserId).get();
+      
+      if (!userDoc.exists) {
+        return;
+      }
+      
+      final userData = userDoc.data()!;
+      
+      // جلب بيانات الشبكة من users collection
+      final networkDoc = await _firestore.collection('users').doc(vendor.networkId).get();
+      String networkName = 'شبكة';
+      String networkOwner = '';
+      
+      if (networkDoc.exists) {
+        final networkData = networkDoc.data()!;
+        networkName = networkData['networkName'] as String? ?? 
+                      networkData['name'] as String? ?? 
+                      'شبكة';
+        networkOwner = networkData['name'] as String? ?? '';
+      }
+      
+      final connectionData = {
+        'vendorId': vendor.realUserId,
+        'networkId': vendor.networkId,
+        'networkName': networkName,
+        'networkOwner': networkOwner,
+        'governorate': userData['governorate'] as String? ?? vendor.governorate,
+        'district': userData['district'] as String? ?? vendor.district,
+        'isActive': true,
+        'connectedAt': Timestamp.fromDate(vendor.createdAt),
+        'balance': vendor.balance, // الرصيد الابتدائي (عادة 0)
+        'totalOrders': 0,
+      };
+      
+      await _firestore.collection('network_connections').add(connectionData);
+    } on Exception {
+      // لا نرمي خطأ لأننا لا نريد أن نفشل عملية إضافة المتجر بالكامل
+    }
+  }
+
+  /// تحديث معلومات متجر (يستخدم composite key)
   static Future<void> updateVendor(VendorModel vendor) async {
     try {
-      await _firestore.collection(_collection).doc(vendor.id).update({
+      final documentId = '${vendor.networkId}_${vendor.realUserId}';
+      await _firestore.collection(_collection).doc(documentId).update({
         ...vendor.toJson(),
         'updatedAt': Timestamp.now(),
       });
-    } catch (e) {
+    } on Exception catch (e) {
       throw Exception('فشل في تحديث المتجر: $e');
     }
   }
 
-  /// حذف متجر
-  static Future<void> deleteVendor(String vendorId) async {
+  /// حذف متجر (يستخدم composite key)
+  /// يحذف المتجر من vendors collection و network_connections
+  static Future<void> deleteVendor(String vendorId, String networkId) async {
     try {
-      await _firestore.collection(_collection).doc(vendorId).delete();
-    } catch (e) {
+      final documentId = '${networkId}_$vendorId';
+      
+      // 1. حذف document المتجر من vendors
+      await _firestore.collection(_collection).doc(documentId).delete();
+      
+      // 2. حذف الاتصال من network_connections
+      final connectionsSnapshot = await _firestore
+          .collection('network_connections')
+          .where('vendorId', isEqualTo: vendorId)
+          .where('networkId', isEqualTo: networkId)
+          .get();
+      
+      for (final doc in connectionsSnapshot.docs) {
+        await doc.reference.delete();
+      }
+    } on Exception catch (e) {
       throw Exception('فشل في حذف المتجر: $e');
     }
   }
 
-  /// الحصول على متجر واحد
-  static Future<VendorModel?> getVendor(String vendorId) async {
+  /// الحصول على متجر واحد (يستخدم composite key)
+  static Future<VendorModel?> getVendor(String vendorId, {String? networkId}) async {
     try {
-      final doc = await _firestore.collection(_collection).doc(vendorId).get();
-      if (doc.exists) {
-        return VendorModel.fromFirestore(doc);
+      // إذا كان networkId موجوداً، نستخدم composite key
+      if (networkId != null) {
+        final documentId = '${networkId}_$vendorId';
+        final doc = await _firestore.collection(_collection).doc(documentId).get();
+        if (doc.exists) {
+          return VendorModel.fromFirestore(doc);
+        }
+        return null;
+      }
+      
+      // للتوافق مع الكود القديم: البحث في جميع vendors بهذا userId
+      final snapshot = await _firestore
+          .collection(_collection)
+          .where('userId', isEqualTo: vendorId)
+          .limit(1)
+          .get();
+      
+      if (snapshot.docs.isNotEmpty) {
+        return VendorModel.fromFirestore(snapshot.docs.first);
       }
       return null;
-    } catch (e) {
+    } on Exception catch (e) {
       throw Exception('فشل في الحصول على المتجر: $e');
     }
   }
@@ -78,7 +163,7 @@ class FirebaseVendorService {
         .snapshots()
         .map((snapshot) {
       final vendors =
-          snapshot.docs.map((doc) => VendorModel.fromFirestore(doc)).toList();
+          snapshot.docs.map(VendorModel.fromFirestore).toList();
       vendors.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return vendors;
     });
@@ -98,28 +183,33 @@ class FirebaseVendorService {
           .where('networkId', isEqualTo: networkId)
           .get();
 
-      final addedVendorIds =
-          addedVendorsSnapshot.docs.map((doc) => doc.id).toSet();
+      // استخراج userId من كل document (لأننا نستخدم composite key الآن)
+      final addedVendorIds = addedVendorsSnapshot.docs
+          .map((doc) => doc.data()['userId'] as String?)
+          .where((id) => id != null)
+          .cast<String>()
+          .toSet();
 
       // البحث في users بنوع posVendor
-      Query query =
+      final Query query =
           _firestore.collection('users').where('type', isEqualTo: 'posVendor');
 
       final snapshot = await query.get();
 
       var vendors = <VendorModel>[];
 
-      for (var doc in snapshot.docs) {
-        // تخطي المتاجر المضافة بالفعل
+      for (final doc in snapshot.docs) {
+        // تخطي المتاجر المضافة بالفعل لهذه الشبكة
         if (addedVendorIds.contains(doc.id)) continue;
 
-        final data = doc.data() as Map<String, dynamic>;
+        final data = doc.data()! as Map<String, dynamic>;
 
         // تحويل من User إلى VendorModel
         final vendor = VendorModel(
           id: doc.id,
-          name: data['name'] as String? ?? '',
-          ownerName: data['name'] as String? ?? '', // نفس الاسم
+          userId: doc.id, // userId من users collection
+          name: data['name'] as String? ?? '', // اسم المتجر
+          ownerName: data['ownerName'] as String? ?? '', // اسم مالك المتجر
           phone: data['phone'] as String? ?? '',
           governorate: data['governorate'] as String? ?? '',
           district: data['district'] as String? ?? '',
@@ -157,7 +247,7 @@ class FirebaseVendorService {
 
       vendors.sort((a, b) => a.name.compareTo(b.name));
       return vendors;
-    } catch (e) {
+    } on Exception catch (e) {
       throw Exception('فشل في البحث عن المتاجر: $e');
     }
   }
@@ -171,7 +261,7 @@ class FirebaseVendorService {
           .get();
       final governorates = <String>{};
 
-      for (var doc in snapshot.docs) {
+      for (final doc in snapshot.docs) {
         final data = doc.data();
         final governorate = data['governorate'] as String?;
         if (governorate != null && governorate.isNotEmpty) {
@@ -181,14 +271,14 @@ class FirebaseVendorService {
 
       final result = governorates.toList()..sort();
       return result;
-    } catch (e) {
+    } on Exception catch (e) {
       throw Exception('فشل في الحصول على المحافظات: $e');
     }
   }
 
   /// الحصول على قائمة المديريات لمحافظة معينة (من users بنوع posVendor)
   static Future<List<String>> getDistrictsByGovernorate(
-      String governorate) async {
+      String governorate,) async {
     try {
       final snapshot = await _firestore
           .collection('users')
@@ -198,7 +288,7 @@ class FirebaseVendorService {
 
       final districts = <String>{};
 
-      for (var doc in snapshot.docs) {
+      for (final doc in snapshot.docs) {
         final data = doc.data();
         final district = data['district'] as String?;
         if (district != null && district.isNotEmpty) {
@@ -208,32 +298,34 @@ class FirebaseVendorService {
 
       final result = districts.toList()..sort();
       return result;
-    } catch (e) {
+    } on Exception catch (e) {
       throw Exception('فشل في الحصول على المديريات: $e');
     }
   }
 
-  /// تحديث رصيد متجر
+  /// تحديث رصيد متجر (يستخدم composite key)
   static Future<void> updateVendorBalance(
-      String vendorId, double newBalance) async {
+      String vendorId, String networkId, double newBalance,) async {
     try {
-      await _firestore.collection(_collection).doc(vendorId).update({
+      final documentId = '${networkId}_$vendorId';
+      await _firestore.collection(_collection).doc(documentId).update({
         'balance': newBalance,
         'updatedAt': Timestamp.now(),
       });
-    } catch (e) {
+    } on Exception catch (e) {
       throw Exception('فشل في تحديث الرصيد: $e');
     }
   }
 
-  /// تحديث مخزون متجر
-  static Future<void> updateVendorStock(String vendorId, int newStock) async {
+  /// تحديث مخزون متجر (يستخدم composite key)
+  static Future<void> updateVendorStock(String vendorId, String networkId, int newStock) async {
     try {
-      await _firestore.collection(_collection).doc(vendorId).update({
+      final documentId = '${networkId}_$vendorId';
+      await _firestore.collection(_collection).doc(documentId).update({
         'stock': newStock,
         'updatedAt': Timestamp.now(),
       });
-    } catch (e) {
+    } on Exception catch (e) {
       throw Exception('فشل في تحديث المخزون: $e');
     }
   }

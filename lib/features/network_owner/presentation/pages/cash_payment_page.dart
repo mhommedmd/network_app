@@ -9,9 +9,10 @@ import '../../../../core/theme/ui_tokens.dart';
 import '../../../../shared/utils/error_handler.dart';
 import '../../../../shared/widgets/app_card.dart';
 import '../../../../shared/widgets/toast/toast.dart';
+import '../../data/models/cash_payment_request_model.dart';
 import '../../data/models/vendor_model.dart';
 import '../../data/providers/vendor_provider.dart';
-import '../../data/services/firebase_payment_service.dart';
+import '../../data/services/firebase_cash_payment_service.dart';
 
 class NetworkCashPaymentPage extends StatelessWidget {
   const NetworkCashPaymentPage({
@@ -25,8 +26,7 @@ class NetworkCashPaymentPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = context.watch<AuthProvider>();
-    final networkId = authProvider.user?.id ?? '';
+    final networkId = context.select((AuthProvider p) => p.user?.id ?? '');
 
     return ChangeNotifierProvider(
       create: (_) => VendorProvider(networkId),
@@ -48,12 +48,10 @@ class _NetworkCashPaymentContent extends StatefulWidget {
   final void Function(VendorModel vendor, double amount, String note)? onSubmit;
 
   @override
-  State<_NetworkCashPaymentContent> createState() =>
-      _NetworkCashPaymentContentState();
+  State<_NetworkCashPaymentContent> createState() => _NetworkCashPaymentContentState();
 }
 
-class _NetworkCashPaymentContentState
-    extends State<_NetworkCashPaymentContent> {
+class _NetworkCashPaymentContentState extends State<_NetworkCashPaymentContent> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _noteController = TextEditingController();
@@ -91,22 +89,28 @@ class _NetworkCashPaymentContentState
       return;
     }
 
-    final parsedAmount =
-        double.tryParse(_amountController.text.replaceAll(',', '')) ?? 0;
+    final parsedAmount = double.tryParse(_amountController.text.replaceAll(',', '')) ?? 0;
 
     setState(() => _submitting = true);
 
     try {
-      // إرسال طلب الدفعة
-      final paymentRequestId = await FirebasePaymentService.sendPaymentRequest(
-        vendorId: _selectedVendor!.id,
+      final networkName = authProvider.user?.networkName ?? authProvider.user?.name ?? 'الشبكة';
+
+      // إنشاء طلب الدفعة
+      final paymentRequest = CashPaymentRequestModel(
+        id: '',
         networkId: networkId,
+        networkName: networkName,
+        vendorId: _selectedVendor!.id,
+        vendorName: _selectedVendor!.name,
         amount: parsedAmount,
-        description: _noteController.text.trim(),
-        notes: 'دفعة نقدية من الشبكة',
+        note: _noteController.text.trim(),
+        status: 'pending',
+        createdAt: DateTime.now(),
       );
 
-      print('✅ تم إرسال طلب الدفعة: $paymentRequestId');
+      // حفظ في Firebase
+      await FirebaseCashPaymentService.createPaymentRequest(paymentRequest);
 
       // استدعاء callback إذا وُجد
       widget.onSubmit?.call(
@@ -119,7 +123,7 @@ class _NetworkCashPaymentContentState
 
       CustomToast.success(
         context,
-        'في انتظار موافقة ${_selectedVendor!.name}',
+        'تم إرسال الطلب إلى ${_selectedVendor!.name}',
         title: 'تم إرسال دفعة ${parsedAmount.toStringAsFixed(0)} ر.ي',
       );
 
@@ -128,12 +132,10 @@ class _NetworkCashPaymentContentState
       if (mounted) {
         widget.onBack();
       }
-    } catch (e) {
-      print('❌ فشل إرسال طلب الدفعة: $e');
-
+    } on Exception catch (e) {
       if (!mounted) return;
 
-      final errorMessage = ErrorHandler.extractErrorMessage(e);
+      final errorMessage = ErrorHandler.extractErrorMessage(e.toString());
       CustomToast.error(
         context,
         errorMessage,
@@ -189,54 +191,51 @@ class _NetworkCashPaymentContentState
                     ),
                   ),
                   SizedBox(height: 8.h),
-                  vendorProvider.isLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : DropdownButtonFormField<VendorModel>(
-                          value: _selectedVendor,
-                          decoration: InputDecoration(
-                            filled: true,
-                            fillColor: Colors.white,
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: 12.w,
-                              vertical: 12.h,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12.r),
-                              borderSide:
-                                  const BorderSide(color: AppColors.gray200),
-                            ),
-                          ),
-                          hint: Text(
-                            vendors.isEmpty
-                                ? 'لا توجد متاجر مضافة'
-                                : 'اختر المتجر المستلم',
-                            style: AppTypography.caption.copyWith(
-                              fontSize: 12.sp,
-                              color: AppColors.gray500,
-                            ),
-                          ),
-                          items: vendors
-                              .map(
-                                (vendor) => DropdownMenuItem<VendorModel>(
-                                  value: vendor,
-                                  child: Text(
-                                    vendor.name,
-                                    style: AppTypography.body.copyWith(
-                                      fontSize: 13.sp,
-                                      color: AppColors.gray800,
-                                    ),
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: vendors.isEmpty
-                              ? null
-                              : (vendor) => setState(() {
-                                    _selectedVendor = vendor;
-                                  }),
-                          validator: (value) =>
-                              value == null ? 'يرجى اختيار المتجر' : null,
+                  if (vendorProvider.isLoading)
+                    const Center(child: CircularProgressIndicator())
+                  else
+                    DropdownButtonFormField<VendorModel>(
+                      initialValue: _selectedVendor,
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12.w,
+                          vertical: 12.h,
                         ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12.r),
+                          borderSide: const BorderSide(color: AppColors.gray200),
+                        ),
+                      ),
+                      hint: Text(
+                        vendors.isEmpty ? 'لا توجد متاجر مضافة' : 'اختر المتجر المستلم',
+                        style: AppTypography.caption.copyWith(
+                          fontSize: 12.sp,
+                          color: AppColors.gray500,
+                        ),
+                      ),
+                      items: vendors
+                          .map(
+                            (vendor) => DropdownMenuItem<VendorModel>(
+                              value: vendor,
+                              child: Text(
+                                vendor.name,
+                                style: AppTypography.body.copyWith(
+                                  fontSize: 13.sp,
+                                  color: AppColors.gray800,
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: vendors.isEmpty
+                          ? null
+                          : (vendor) => setState(() {
+                                _selectedVendor = vendor;
+                              }),
+                      validator: (value) => value == null ? 'يرجى اختيار المتجر' : null,
+                    ),
                   SizedBox(height: 20.h),
                   Text(
                     'قيمة الدفعه النقدية',

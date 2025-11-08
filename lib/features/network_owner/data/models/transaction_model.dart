@@ -19,7 +19,7 @@ class TransactionModel {
   });
 
   factory TransactionModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = doc.data()! as Map<String, dynamic>;
     return TransactionModel(
       id: doc.id,
       vendorId: data['vendorId'] as String? ?? '',

@@ -1,8 +1,7 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
-
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../../core/providers/auth_provider.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -43,6 +42,10 @@ class _SendOrderPageState extends State<SendOrderPage> {
   // Map لحفظ TextEditingController لكل باقة
   final Map<String, TextEditingController> _controllers = {};
   bool _isLoading = false;
+  
+  // Cache للحسابات
+  double? _cachedTotalAmount;
+  int? _cachedTotalCards;
 
   @override
   void initState() {
@@ -55,7 +58,7 @@ class _SendOrderPageState extends State<SendOrderPage> {
   @override
   void dispose() {
     // تنظيف جميع الـ controllers
-    for (var controller in _controllers.values) {
+    for (final controller in _controllers.values) {
       controller.dispose();
     }
     super.dispose();
@@ -75,31 +78,25 @@ class _SendOrderPageState extends State<SendOrderPage> {
     return _controllers[packageId]!;
   }
 
-  void _updateQuantity(String packageId, int quantity) {
-    if (!_controllers.containsKey(packageId)) {
-      // إنشاء الـ controller أولاً إذا لم يكن موجوداً
-      _controllers[packageId] = TextEditingController(text: '0');
-    }
-
-    setState(() {
-      if (quantity > 0) {
-        _packageQuantities[packageId] = quantity;
-      } else {
-        _packageQuantities.remove(packageId);
-      }
-      _controllers[packageId]!.text = quantity.toString();
-    });
+  void _invalidateCache() {
+    _cachedTotalAmount = null;
+    _cachedTotalCards = null;
   }
 
   void _onQuantityChanged(String packageId, String value) {
+    // تحديث الكمية بدون setState لمنع اختفاء الكيبورد
     final quantity = int.tryParse(value) ?? 0;
-    setState(() {
-      if (quantity > 0) {
-        _packageQuantities[packageId] = quantity;
-      } else {
-        _packageQuantities.remove(packageId);
-      }
-    });
+    if (quantity > 0) {
+      _packageQuantities[packageId] = quantity;
+    } else {
+      _packageQuantities.remove(packageId);
+    }
+    _invalidateCache();
+  }
+  
+  void _onQuantitySubmitted(String packageId) {
+    // تحديث واجهة المستخدم عند الانتهاء من الإدخال
+    setState(() {});
   }
 
   int _getQuantity(String packageId) {
@@ -107,18 +104,24 @@ class _SendOrderPageState extends State<SendOrderPage> {
   }
 
   double _calculateTotalAmount(List<PackageModel> packages) {
+    if (_cachedTotalAmount != null) return _cachedTotalAmount!;
+    
     double total = 0;
-    for (var pkg in packages) {
+    for (final pkg in packages) {
       final quantity = _getQuantity(pkg.id);
       if (quantity > 0) {
         total += pkg.purchasePrice * quantity;
       }
     }
+    _cachedTotalAmount = total;
     return total;
   }
 
   int _getTotalCards() {
-    return _packageQuantities.values.fold(0, (sum, qty) => sum + qty);
+    if (_cachedTotalCards != null) return _cachedTotalCards!;
+    
+    _cachedTotalCards = _packageQuantities.values.fold<int>(0, (total, qty) => total + qty);
+    return _cachedTotalCards!;
   }
 
   Future<void> _selectNetwork() async {
@@ -135,9 +138,7 @@ class _SendOrderPageState extends State<SendOrderPage> {
         .where('isActive', isEqualTo: true)
         .get();
 
-    final connections = connectionsSnapshot.docs
-        .map((doc) => NetworkConnectionModel.fromFirestore(doc))
-        .toList();
+    final connections = connectionsSnapshot.docs.map(NetworkConnectionModel.fromFirestore).toList();
 
     if (connections.isEmpty) {
       if (!mounted) return;
@@ -150,6 +151,7 @@ class _SendOrderPageState extends State<SendOrderPage> {
     }
 
     // عرض قائمة الشبكات
+    if (!mounted) return;
     final selected = await showModalBottomSheet<NetworkConnectionModel>(
       context: context,
       backgroundColor: Colors.white,
@@ -189,8 +191,7 @@ class _SendOrderPageState extends State<SendOrderPage> {
                   return ListTile(
                     leading: CircleAvatar(
                       backgroundColor: AppColors.blue100,
-                      child:
-                          Icon(Icons.hub, color: AppColors.primary, size: 20.w),
+                      child: Icon(Icons.hub, color: AppColors.primary, size: 20.w),
                     ),
                     title: Text(network.networkName),
                     subtitle: Text(network.networkOwner),
@@ -210,9 +211,10 @@ class _SendOrderPageState extends State<SendOrderPage> {
         _selectedNetworkName = selected.networkName;
         // إعادة تعيين الكميات عند تغيير الشبكة
         _packageQuantities.clear();
-        for (var controller in _controllers.values) {
+        for (final controller in _controllers.values) {
           controller.text = '0';
         }
+        _invalidateCache();
       });
     }
   }
@@ -238,7 +240,7 @@ class _SendOrderPageState extends State<SendOrderPage> {
       // إنشاء قائمة العناصر
       final items = <OrderItemModel>[];
 
-      for (var pkg in packages) {
+      for (final pkg in packages) {
         final quantity = _getQuantity(pkg.id);
         if (quantity > 0) {
           items.add(
@@ -291,7 +293,7 @@ class _SendOrderPageState extends State<SendOrderPage> {
       await Future<void>.delayed(const Duration(milliseconds: 800));
       if (!mounted) return;
       Navigator.of(context).pop();
-    } catch (e) {
+    } on Exception catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
 
@@ -335,8 +337,9 @@ class _SendOrderPageState extends State<SendOrderPage> {
         child: _selectedNetworkId == null
             ? _buildNetworkSelection()
             : StreamBuilder<List<PackageModel>>(
-                stream: FirebasePackageService.getPackagesByNetwork(
-                    _selectedNetworkId!),
+                stream: FirebasePackageService.getActivePackagesByNetwork(
+                  _selectedNetworkId!,
+                ),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -394,216 +397,228 @@ class _SendOrderPageState extends State<SendOrderPage> {
                               ),
                               SizedBox(height: 16.h),
 
-                              // قائمة الباقات
+                              // قائمة الباقات (تصميم محسّن مع تفاصيل)
                               ...packages.map((pkg) {
                                 final quantity = _getQuantity(pkg.id);
                                 final isSelected = quantity > 0;
+                                
+                                // حساب حجم الباقة
+                                final sizeGB = pkg.dataSizeGB > 0 
+                                    ? pkg.dataSizeGB 
+                                    : (pkg.dataSizeMB / 1024);
+                                final sizeText = sizeGB >= 1 
+                                    ? '${sizeGB.toStringAsFixed(0)} GB' 
+                                    : '${pkg.dataSizeMB} MB';
 
                                 return Container(
-                                  margin: EdgeInsets.only(bottom: 12.h),
+                                  margin: EdgeInsets.only(bottom: 10.h),
                                   decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? AppColors.blue50
-                                        : Colors.white,
+                                    color: isSelected ? AppColors.blue50 : Colors.white,
                                     borderRadius: BorderRadius.circular(12.r),
                                     border: Border.all(
-                                      color: isSelected
-                                          ? AppColors.primary
-                                          : AppColors.gray200,
+                                      color: isSelected ? AppColors.primary : AppColors.gray200,
                                       width: isSelected ? 2 : 1,
                                     ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black
-                                            .withValues(alpha: 0.05),
-                                        blurRadius: 10,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ],
                                   ),
-                                  padding: EdgeInsets.all(16.w),
+                                  padding: EdgeInsets.all(14.w),
                                   child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      // معلومات الباقة
+                                      // الصف الأول: معلومات الباقة + حقل الإدخال
                                       Row(
                                         children: [
+                                          // أيقونة الباقة
                                           Container(
-                                            width: 50.w,
-                                            height: 50.w,
+                                            width: 44.w,
+                                            height: 44.w,
                                             decoration: BoxDecoration(
-                                              color: AppColors.primary
-                                                  .withValues(alpha: 0.1),
-                                              borderRadius:
-                                                  BorderRadius.circular(12.r),
-                                            ),
-                                            child: Center(
-                                              child: Icon(
-                                                Icons.wifi,
-                                                color: AppColors.primary,
-                                                size: 24.w,
+                                              gradient: LinearGradient(
+                                                colors: [
+                                                  AppColors.primary.withValues(alpha: 0.15),
+                                                  AppColors.primary.withValues(alpha: 0.05),
+                                                ],
                                               ),
+                                              borderRadius: BorderRadius.circular(10.r),
+                                            ),
+                                            child: Icon(
+                                              Icons.wifi,
+                                              color: AppColors.primary,
+                                              size: 22.w,
                                             ),
                                           ),
                                           SizedBox(width: 12.w),
+                                          
+                                          // معلومات الباقة
                                           Expanded(
                                             child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
+                                              crossAxisAlignment: CrossAxisAlignment.start,
                                               children: [
                                                 Text(
                                                   pkg.name,
                                                   style: TextStyle(
-                                                    fontSize: 15.sp,
-                                                    fontWeight: FontWeight.w600,
+                                                    fontSize: 14.sp,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: AppColors.gray900,
                                                   ),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
                                                 ),
-                                                SizedBox(height: 4.h),
-                                                Text(
-                                                  'السعر: ${CurrencyFormatter.format(pkg.purchasePrice)}',
-                                                  style: TextStyle(
-                                                    fontSize: 13.sp,
-                                                    color: AppColors.primary,
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
+                                                SizedBox(height: 3.h),
+                                                Row(
+                                                  children: [
+                                                    // حجم الباقة
+                                                    Container(
+                                                      padding: EdgeInsets.symmetric(
+                                                        horizontal: 6.w,
+                                                        vertical: 2.h,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        color: AppColors.blue100,
+                                                        borderRadius: BorderRadius.circular(4.r),
+                                                      ),
+                                                      child: Text(
+                                                        sizeText,
+                                                        style: TextStyle(
+                                                          fontSize: 9.sp,
+                                                          fontWeight: FontWeight.w600,
+                                                          color: AppColors.blue700,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    SizedBox(width: 4.w),
+                                                    // الصلاحية
+                                                    Container(
+                                                      padding: EdgeInsets.symmetric(
+                                                        horizontal: 6.w,
+                                                        vertical: 2.h,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        color: AppColors.success.withValues(alpha: 0.1),
+                                                        borderRadius: BorderRadius.circular(4.r),
+                                                      ),
+                                                      child: Text(
+                                                        '${pkg.validityDays} يوم',
+                                                        style: TextStyle(
+                                                          fontSize: 9.sp,
+                                                          fontWeight: FontWeight.w600,
+                                                          color: AppColors.success,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    SizedBox(width: 6.w),
+                                                    // السعر
+                                                    Text(
+                                                      CurrencyFormatter.format(pkg.purchasePrice),
+                                                      style: TextStyle(
+                                                        fontSize: 12.sp,
+                                                        color: AppColors.primary,
+                                                        fontWeight: FontWeight.w700,
+                                                      ),
+                                                    ),
+                                                  ],
                                                 ),
                                               ],
                                             ),
                                           ),
-                                        ],
-                                      ),
-
-                                      SizedBox(height: 12.h),
-                                      Divider(
-                                          color: AppColors.gray200, height: 1),
-                                      SizedBox(height: 12.h),
-
-                                      // محدد الكمية
-                                      Row(
-                                        children: [
-                                          Text(
-                                            'الكمية:',
-                                            style: TextStyle(
-                                              fontSize: 14.sp,
-                                              fontWeight: FontWeight.w600,
-                                              color: AppColors.gray700,
+                                          
+                                          SizedBox(width: 10.w),
+                                          
+                                          // حقل إدخال الكمية
+                                          Container(
+                                            width: 70.w,
+                                            height: 44.h,
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius: BorderRadius.circular(10.r),
+                                              border: Border.all(
+                                                color: isSelected ? AppColors.primary : AppColors.gray300,
+                                                width: isSelected ? 2 : 1,
+                                              ),
                                             ),
-                                          ),
-                                          SizedBox(width: 12.w),
-                                          Expanded(
-                                            child: Container(
-                                              height: 50.h,
-                                              decoration: BoxDecoration(
-                                                color: Colors.white,
-                                                borderRadius:
-                                                    BorderRadius.circular(10.r),
-                                                border: Border.all(
-                                                  color: isSelected
-                                                      ? AppColors.primary
-                                                      : AppColors.gray300,
-                                                  width: isSelected ? 2 : 1,
+                                            child: TextField(
+                                              controller: _getController(pkg.id),
+                                              keyboardType: TextInputType.number,
+                                              textAlign: TextAlign.center,
+                                              textInputAction: TextInputAction.next,
+                                              style: TextStyle(
+                                                fontSize: 15.sp,
+                                                fontWeight: FontWeight.w700,
+                                                color: isSelected ? AppColors.primary : AppColors.gray700,
+                                              ),
+                                              decoration: InputDecoration(
+                                                border: InputBorder.none,
+                                                contentPadding: EdgeInsets.zero,
+                                                hintText: '0',
+                                                hintStyle: TextStyle(
+                                                  color: AppColors.gray400,
+                                                  fontSize: 15.sp,
                                                 ),
                                               ),
-                                              child: Row(
+                                              onChanged: (value) => _onQuantityChanged(pkg.id, value),
+                                              onSubmitted: (_) => _onQuantitySubmitted(pkg.id),
+                                              onTap: () {
+                                                // تحديد النص عند الضغط
+                                                final controller = _getController(pkg.id);
+                                                controller.selection = TextSelection(
+                                                  baseOffset: 0,
+                                                  extentOffset: controller.text.length,
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      
+                                      // الصف الثاني: الكمية والمجموع (يظهر فقط إذا تم اختيار كمية)
+                                      if (isSelected) ...[
+                                        SizedBox(height: 10.h),
+                                        Container(
+                                          padding: EdgeInsets.symmetric(
+                                            horizontal: 10.w,
+                                            vertical: 8.h,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primary.withValues(alpha: 0.08),
+                                            borderRadius: BorderRadius.circular(8.r),
+                                          ),
+                                          child: Row(
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Row(
                                                 children: [
-                                                  // زر الإنقاص
-                                                  IconButton(
-                                                    onPressed: () {
-                                                      if (quantity > 0) {
-                                                        _updateQuantity(pkg.id,
-                                                            quantity - 1);
-                                                      }
-                                                    },
-                                                    icon: const Icon(Icons
-                                                        .remove_circle_outline),
-                                                    color: quantity > 0
-                                                        ? AppColors.primary
-                                                        : AppColors.gray300,
-                                                    iconSize: 24.w,
+                                                  Icon(
+                                                    Icons.shopping_cart_outlined,
+                                                    size: 14.w,
+                                                    color: AppColors.gray600,
                                                   ),
-
-                                                  // حقل الإدخال
-                                                  Expanded(
-                                                    child: TextField(
-                                                      controller:
-                                                          _getController(
-                                                              pkg.id),
-                                                      keyboardType:
-                                                          TextInputType.number,
-                                                      textAlign:
-                                                          TextAlign.center,
-                                                      style: TextStyle(
-                                                        fontSize: 18.sp,
-                                                        fontWeight:
-                                                            FontWeight.w700,
-                                                        color: isSelected
-                                                            ? AppColors.primary
-                                                            : AppColors.gray900,
-                                                      ),
-                                                      decoration:
-                                                          const InputDecoration(
-                                                        border:
-                                                            InputBorder.none,
-                                                        contentPadding:
-                                                            EdgeInsets.zero,
-                                                        hintText: '0',
-                                                      ),
-                                                      onChanged: (value) =>
-                                                          _onQuantityChanged(
-                                                              pkg.id, value),
+                                                  SizedBox(width: 4.w),
+                                                  Text(
+                                                    '$quantity كرت',
+                                                    style: TextStyle(
+                                                      fontSize: 13.sp,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: AppColors.gray700,
                                                     ),
-                                                  ),
-
-                                                  // زر الزيادة
-                                                  IconButton(
-                                                    onPressed: () {
-                                                      _updateQuantity(
-                                                          pkg.id, quantity + 1);
-                                                    },
-                                                    icon: const Icon(Icons
-                                                        .add_circle_outline),
-                                                    color: AppColors.primary,
-                                                    iconSize: 24.w,
                                                   ),
                                                 ],
                                               ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-
-                                      // المجموع الفرعي
-                                      if (isSelected) ...[
-                                        SizedBox(height: 8.h),
-                                        Container(
-                                          padding: EdgeInsets.all(8.w),
-                                          decoration: BoxDecoration(
-                                            color: AppColors.primary
-                                                .withValues(alpha: 0.1),
-                                            borderRadius:
-                                                BorderRadius.circular(8.r),
-                                          ),
-                                          child: Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Text(
-                                                'المجموع الفرعي',
-                                                style: TextStyle(
-                                                  fontSize: 12.sp,
-                                                  color: AppColors.gray700,
-                                                ),
-                                              ),
-                                              Text(
-                                                CurrencyFormatter.format(
-                                                    pkg.purchasePrice *
-                                                        quantity),
-                                                style: TextStyle(
-                                                  fontSize: 14.sp,
-                                                  fontWeight: FontWeight.w700,
-                                                  color: AppColors.primary,
-                                                ),
+                                              Row(
+                                                children: [
+                                                  Icon(
+                                                    Icons.calculate_outlined,
+                                                    size: 14.w,
+                                                    color: AppColors.primary,
+                                                  ),
+                                                  SizedBox(width: 4.w),
+                                                  Text(
+                                                    CurrencyFormatter.format(pkg.purchasePrice * quantity),
+                                                    style: TextStyle(
+                                                      fontSize: 13.sp,
+                                                      fontWeight: FontWeight.w700,
+                                                      color: AppColors.primary,
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
                                             ],
                                           ),
@@ -648,8 +663,7 @@ class _SendOrderPageState extends State<SendOrderPage> {
                                 child: Column(
                                   children: [
                                     Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
                                         Text(
                                           'إجمالي الكروت',
@@ -669,10 +683,11 @@ class _SendOrderPageState extends State<SendOrderPage> {
                                       ],
                                     ),
                                     Divider(
-                                        height: 16.h, color: AppColors.gray300),
+                                      height: 16.h,
+                                      color: AppColors.gray300,
+                                    ),
                                     Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
                                         Text(
                                           'المجموع الكلي',
@@ -684,7 +699,8 @@ class _SendOrderPageState extends State<SendOrderPage> {
                                         ),
                                         Text(
                                           CurrencyFormatter.format(
-                                              _calculateTotalAmount(packages)),
+                                            _calculateTotalAmount(packages),
+                                          ),
                                           style: TextStyle(
                                             fontSize: 20.sp,
                                             fontWeight: FontWeight.w800,
@@ -701,15 +717,9 @@ class _SendOrderPageState extends State<SendOrderPage> {
 
                               // زر الإرسال
                               AppButton(
-                                text: _isLoading
-                                    ? 'جارِ الإرسال...'
-                                    : 'إرسال الطلب',
-                                variant: AppButtonVariant.primary,
+                                text: _isLoading ? 'جارِ الإرسال...' : 'إرسال الطلب',
                                 size: AppButtonSize.large,
-                                onPressed:
-                                    _isLoading || _packageQuantities.isEmpty
-                                        ? null
-                                        : () => _sendOrder(packages),
+                                onPressed: _isLoading || _packageQuantities.isEmpty ? null : () => _sendOrder(packages),
                                 icon: _isLoading
                                     ? SizedBox(
                                         width: 20.w,
@@ -719,8 +729,10 @@ class _SendOrderPageState extends State<SendOrderPage> {
                                           strokeWidth: 2,
                                         ),
                                       )
-                                    : const Icon(Icons.send,
-                                        color: Colors.white),
+                                    : const Icon(
+                                        Icons.send,
+                                        color: Colors.white,
+                                      ),
                               ),
                             ],
                           ),

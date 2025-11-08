@@ -25,7 +25,7 @@ class FirebaseNetworkService {
           .toSet();
 
       // البحث في users بنوع networkOwner
-      Query query = _firestore
+      final Query query = _firestore
           .collection('users')
           .where('type', isEqualTo: 'networkOwner');
 
@@ -33,11 +33,11 @@ class FirebaseNetworkService {
 
       var networks = <NetworkConnectionModel>[];
 
-      for (var doc in snapshot.docs) {
+      for (final doc in snapshot.docs) {
         // تخطي الشبكات المضافة بالفعل
         if (connectedNetworkIds.contains(doc.id)) continue;
 
-        final data = doc.data() as Map<String, dynamic>;
+        final data = doc.data()! as Map<String, dynamic>;
 
         // تحويل من User إلى NetworkConnectionModel
         final network = NetworkConnectionModel(
@@ -76,26 +76,40 @@ class FirebaseNetworkService {
 
       networks.sort((a, b) => a.networkName.compareTo(b.networkName));
       return networks;
-    } catch (e) {
+    } on Exception catch (e) {
       throw Exception('فشل في البحث عن الشبكات: $e');
     }
   }
 
   /// إضافة اتصال شبكة جديد
   static Future<String> addNetworkConnection(
-      NetworkConnectionModel connection) async {
+      NetworkConnectionModel connection,) async {
     try {
+      print('🔄 محاولة إضافة اتصال شبكة:');
+      print('   - vendorId: ${connection.vendorId}');
+      print('   - networkId: ${connection.networkId}');
+      print('   - networkName: ${connection.networkName}');
+      
+      final data = connection.toJson();
+      print('📦 البيانات المرسلة: $data');
+      
       final docRef =
-          await _firestore.collection(_collection).add(connection.toJson());
+          await _firestore.collection(_collection).add(data);
+      
+      print('✅ تم إنشاء الاتصال بنجاح: ${docRef.id}');
       return docRef.id;
-    } catch (e) {
+    } on FirebaseException catch (e) {
+      print('❌ Firebase خطأ: ${e.code} - ${e.message}');
+      throw Exception('فشل في إضافة الشبكة: ${e.message}');
+    } on Exception catch (e) {
+      print('❌ خطأ عام: $e');
       throw Exception('فشل في إضافة الشبكة: $e');
     }
   }
 
   /// الحصول على الشبكات المتصلة
   static Stream<List<NetworkConnectionModel>> getConnectedNetworks(
-      String vendorId) {
+      String vendorId,) {
     return _firestore
         .collection(_collection)
         .where('vendorId', isEqualTo: vendorId)
@@ -103,7 +117,7 @@ class FirebaseNetworkService {
         .snapshots()
         .map((snapshot) {
       final networks = snapshot.docs
-          .map((doc) => NetworkConnectionModel.fromFirestore(doc))
+          .map(NetworkConnectionModel.fromFirestore)
           .toList();
       networks.sort((a, b) => b.connectedAt.compareTo(a.connectedAt));
       return networks;
@@ -114,7 +128,7 @@ class FirebaseNetworkService {
   static Future<void> removeNetworkConnection(String connectionId) async {
     try {
       await _firestore.collection(_collection).doc(connectionId).delete();
-    } catch (e) {
+    } on Exception catch (e) {
       throw Exception('فشل في حذف الاتصال: $e');
     }
   }
@@ -129,7 +143,7 @@ class FirebaseNetworkService {
 
       final governorates = <String>{};
 
-      for (var doc in snapshot.docs) {
+      for (final doc in snapshot.docs) {
         final data = doc.data();
         final governorate = data['governorate'] as String?;
         if (governorate != null && governorate.isNotEmpty) {
@@ -139,7 +153,7 @@ class FirebaseNetworkService {
 
       final result = governorates.toList()..sort();
       return result;
-    } catch (e) {
+    } on Exception catch (e) {
       throw Exception('فشل في الحصول على المحافظات: $e');
     }
   }
@@ -155,7 +169,7 @@ class FirebaseNetworkService {
 
       final districts = <String>{};
 
-      for (var doc in snapshot.docs) {
+      for (final doc in snapshot.docs) {
         final data = doc.data();
         final district = data['district'] as String?;
         if (district != null && district.isNotEmpty) {
@@ -165,7 +179,7 @@ class FirebaseNetworkService {
 
       final result = districts.toList()..sort();
       return result;
-    } catch (e) {
+    } on Exception catch (e) {
       throw Exception('فشل في الحصول على المديريات: $e');
     }
   }

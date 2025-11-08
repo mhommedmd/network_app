@@ -24,8 +24,7 @@ class MerchantTransactionsPage extends StatefulWidget {
   final VoidCallback onBack;
 
   @override
-  State<MerchantTransactionsPage> createState() =>
-      _MerchantTransactionsPageState();
+  State<MerchantTransactionsPage> createState() => _MerchantTransactionsPageState();
 }
 
 class _MerchantTransactionsPageState extends State<MerchantTransactionsPage> {
@@ -53,8 +52,11 @@ class _MerchantTransactionsPageState extends State<MerchantTransactionsPage> {
     }
 
     try {
-      // تحميل بيانات المتجر
-      final vendor = await FirebaseVendorService.getVendor(widget.vendorId);
+      // تحميل بيانات المتجر (باستخدام networkId للحصول على البيانات الصحيحة)
+      final vendor = await FirebaseVendorService.getVendor(
+        widget.vendorId,
+        networkId: networkId,
+      );
 
       // تحميل ملخص الحساب
       final summary = await FirebaseTransactionService.getAccountSummary(
@@ -67,7 +69,7 @@ class _MerchantTransactionsPageState extends State<MerchantTransactionsPage> {
         _accountSummary = summary;
         _isLoading = false;
       });
-    } catch (e) {
+    } on Exception catch (e) {
       setState(() {
         _error = e.toString();
         _isLoading = false;
@@ -80,12 +82,13 @@ class _MerchantTransactionsPageState extends State<MerchantTransactionsPage> {
     super.dispose();
   }
 
-  IconData _getTypeIcon(String type) {
+  static IconData _getTypeIcon(String type) {
     switch (type) {
       case 'charge':
-        return Icons.trending_up;
+        return Icons.trending_down; // سالب
       case 'payment':
-        return Icons.trending_down;
+      case 'cash_payment_received': // للتوافق مع المعاملات القديمة
+        return Icons.trending_up; // موجب
       case 'refund':
         return Icons.refresh;
       case 'fee':
@@ -97,17 +100,14 @@ class _MerchantTransactionsPageState extends State<MerchantTransactionsPage> {
     }
   }
 
-  // removed unused labels mapping after simplification
-
-  String _formatNumber(double number) {
+  static String _formatNumber(double number) {
     final formatter = NumberFormat('#,##0', 'ar');
     return formatter.format(number);
   }
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = context.watch<AuthProvider>();
-    final networkId = authProvider.user?.id ?? '';
+    final networkId = context.read<AuthProvider>().user?.id ?? '';
 
     if (_isLoading) {
       return Scaffold(
@@ -132,20 +132,20 @@ class _MerchantTransactionsPageState extends State<MerchantTransactionsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SkeletonLine(width: 80, height: 12),
+                    const SkeletonLine(width: 80),
                     SizedBox(height: 6.h),
                     const SkeletonLine(width: 120, height: 24),
                     SizedBox(height: 12.h),
                     Row(
                       children: [
-                        Expanded(
+                        const Expanded(
                           child: SkeletonBox(
                             height: 70,
                             borderRadius: 10,
                           ),
                         ),
                         SizedBox(width: 10.w),
-                        Expanded(
+                        const Expanded(
                           child: SkeletonBox(
                             height: 70,
                             borderRadius: 10,
@@ -158,7 +158,7 @@ class _MerchantTransactionsPageState extends State<MerchantTransactionsPage> {
               ),
               SizedBox(height: 12.h),
               // Skeleton for transactions header
-              Align(
+              const Align(
                 alignment: Alignment.centerRight,
                 child: SkeletonLine(width: 100, height: 14),
               ),
@@ -281,8 +281,11 @@ class _MerchantTransactionsPageState extends State<MerchantTransactionsPage> {
                             SizedBox(height: 4.h),
                             Row(
                               children: [
-                                Icon(Icons.person,
-                                    size: 14.w, color: AppColors.gray500),
+                                Icon(
+                                  Icons.person,
+                                  size: 14.w,
+                                  color: AppColors.gray500,
+                                ),
                                 SizedBox(width: 4.w),
                                 Text(
                                   _vendor!.ownerName,
@@ -295,8 +298,11 @@ class _MerchantTransactionsPageState extends State<MerchantTransactionsPage> {
                             ),
                             Row(
                               children: [
-                                Icon(Icons.phone,
-                                    size: 14.w, color: AppColors.gray500),
+                                Icon(
+                                  Icons.phone,
+                                  size: 14.w,
+                                  color: AppColors.gray500,
+                                ),
                                 SizedBox(width: 4.w),
                                 Text(
                                   _vendor!.phone,
@@ -323,26 +329,30 @@ class _MerchantTransactionsPageState extends State<MerchantTransactionsPage> {
                       Text(
                         'الرصيد الحالي',
                         style: TextStyle(
-                            fontSize: 12.sp, color: AppColors.gray600),
+                          fontSize: 12.sp,
+                          color: AppColors.gray600,
+                        ),
                       ),
                       SizedBox(height: 6.h),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            '${_vendor!.balance >= 0 ? '+' : ''}${_formatNumber(_vendor!.balance)}',
+                            '${(_accountSummary?['balance'] as double?) != null && (_accountSummary!['balance'] as double) >= 0 ? '+' : ''}${_formatNumber((_accountSummary?['balance'] as double?) ?? _vendor!.balance)}',
                             style: TextStyle(
                               fontSize: 24.sp,
                               fontWeight: FontWeight.w700,
-                              color: _vendor!.balance >= 0
-                                  ? AppColors.success
-                                  : AppColors.error,
+                              color: ((_accountSummary?['balance'] as double?) ?? _vendor!.balance) > 0
+                                  ? AppColors.error
+                                  : AppColors.success,
                             ),
                           ),
                           Text(
                             CurrencyFormatter.symbol,
                             style: TextStyle(
-                                fontSize: 12.sp, color: AppColors.gray500),
+                              fontSize: 12.sp,
+                              color: AppColors.gray500,
+                            ),
                           ),
                         ],
                       ),
@@ -357,8 +367,7 @@ class _MerchantTransactionsPageState extends State<MerchantTransactionsPage> {
                                   horizontal: 12.w,
                                 ),
                                 decoration: BoxDecoration(
-                                  color:
-                                      AppColors.success.withValues(alpha: 0.08),
+                                  color: AppColors.error.withValues(alpha: 0.08),
                                   borderRadius: BorderRadius.circular(10.r),
                                 ),
                                 child: Column(
@@ -367,9 +376,9 @@ class _MerchantTransactionsPageState extends State<MerchantTransactionsPage> {
                                     Row(
                                       children: [
                                         Icon(
-                                          Icons.trending_up,
+                                          Icons.trending_down,
                                           size: 14.w,
-                                          color: AppColors.success,
+                                          color: AppColors.error,
                                         ),
                                         SizedBox(width: 6.w),
                                         Text(
@@ -384,13 +393,12 @@ class _MerchantTransactionsPageState extends State<MerchantTransactionsPage> {
                                     SizedBox(height: 4.h),
                                     Text(
                                       _formatNumber(
-                                          _accountSummary!['totalCharges']
-                                                  as double? ??
-                                              0),
+                                        _accountSummary!['totalCharges'] as double? ?? 0,
+                                      ),
                                       style: TextStyle(
                                         fontSize: 14.sp,
                                         fontWeight: FontWeight.w600,
-                                        color: AppColors.successDark,
+                                        color: AppColors.error,
                                       ),
                                     ),
                                   ],
@@ -405,8 +413,7 @@ class _MerchantTransactionsPageState extends State<MerchantTransactionsPage> {
                                   horizontal: 12.w,
                                 ),
                                 decoration: BoxDecoration(
-                                  color:
-                                      AppColors.primary.withValues(alpha: 0.08),
+                                  color: AppColors.success.withValues(alpha: 0.08),
                                   borderRadius: BorderRadius.circular(10.r),
                                 ),
                                 child: Column(
@@ -415,9 +422,9 @@ class _MerchantTransactionsPageState extends State<MerchantTransactionsPage> {
                                     Row(
                                       children: [
                                         Icon(
-                                          Icons.trending_down,
+                                          Icons.trending_up,
                                           size: 14.w,
-                                          color: AppColors.primary,
+                                          color: AppColors.success,
                                         ),
                                         SizedBox(width: 6.w),
                                         Text(
@@ -432,13 +439,12 @@ class _MerchantTransactionsPageState extends State<MerchantTransactionsPage> {
                                     SizedBox(height: 4.h),
                                     Text(
                                       _formatNumber(
-                                          _accountSummary!['totalPayments']
-                                                  as double? ??
-                                              0),
+                                        _accountSummary!['totalPayments'] as double? ?? 0,
+                                      ),
                                       style: TextStyle(
                                         fontSize: 14.sp,
                                         fontWeight: FontWeight.w600,
-                                        color: AppColors.primaryDark,
+                                        color: AppColors.success,
                                       ),
                                     ),
                                   ],
@@ -504,7 +510,9 @@ class _MerchantTransactionsPageState extends State<MerchantTransactionsPage> {
                         Text(
                           'لم يتم تسجيل أي معاملات بعد',
                           style: TextStyle(
-                              fontSize: 12.sp, color: AppColors.gray600),
+                            fontSize: 12.sp,
+                            color: AppColors.gray600,
+                          ),
                         ),
                       ],
                     ),
@@ -531,8 +539,13 @@ class _TransactionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isPositive = transaction.amount >= 0;
-    final amountColor = isPositive ? AppColors.success : AppColors.error;
+    // المنطق الجديد:
+    // charge (طلبات) = سالب/أحمر
+    // payment (دفعات) = موجب/أخضر
+    // دعم المعاملات القديمة والجديدة
+    final isPayment =
+        transaction.type == 'payment' || transaction.type == 'cash_payment_received' || transaction.type == 'refund';
+    final amountColor = isPayment ? AppColors.success : AppColors.error;
 
     return AppCard(
       child: Row(
@@ -541,8 +554,7 @@ class _TransactionRow extends StatelessWidget {
             width: 40.w,
             height: 40.w,
             decoration: BoxDecoration(
-              color: (isPositive ? AppColors.success : AppColors.error)
-                  .withValues(alpha: 0.08),
+              color: amountColor.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(10.r),
             ),
             child: Icon(
@@ -584,8 +596,7 @@ class _TransactionRow extends StatelessWidget {
                     SizedBox(width: 6.w),
                     Text(
                       DateFormat('dd/MM/yyyy HH:mm').format(transaction.date),
-                      style:
-                          TextStyle(fontSize: 11.sp, color: AppColors.gray500),
+                      style: TextStyle(fontSize: 11.sp, color: AppColors.gray500),
                     ),
                   ],
                 ),
@@ -597,7 +608,7 @@ class _TransactionRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '${isPositive ? '+' : ''}${formatNumber(transaction.amount)}',
+                '${isPayment ? '+' : '-'}${formatNumber(transaction.amount.abs())}',
                 style: TextStyle(
                   fontSize: 15.sp,
                   fontWeight: FontWeight.w700,

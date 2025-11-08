@@ -59,7 +59,7 @@ class VendorProvider with ChangeNotifier {
       _isLoading = false;
       notifyListeners();
       return true;
-    } catch (e) {
+    } on Exception catch (e) {
       _error = e.toString();
       _isLoading = false;
       notifyListeners();
@@ -79,7 +79,7 @@ class VendorProvider with ChangeNotifier {
       _isLoading = false;
       notifyListeners();
       return true;
-    } catch (e) {
+    } on Exception catch (e) {
       _error = e.toString();
       _isLoading = false;
       notifyListeners();
@@ -87,19 +87,19 @@ class VendorProvider with ChangeNotifier {
     }
   }
 
-  /// حذف متجر
+  /// حذف متجر (يستخدم composite key)
   Future<bool> deleteVendor(String vendorId) async {
     try {
       _isLoading = true;
       _error = null;
       notifyListeners();
 
-      await FirebaseVendorService.deleteVendor(vendorId);
+      await FirebaseVendorService.deleteVendor(vendorId, _networkId);
 
       _isLoading = false;
       notifyListeners();
       return true;
-    } catch (e) {
+    } on Exception catch (e) {
       _error = e.toString();
       _isLoading = false;
       notifyListeners();
@@ -107,24 +107,24 @@ class VendorProvider with ChangeNotifier {
     }
   }
 
-  /// تحديث رصيد متجر
+  /// تحديث رصيد متجر (يستخدم composite key)
   Future<bool> updateVendorBalance(String vendorId, double newBalance) async {
     try {
-      await FirebaseVendorService.updateVendorBalance(vendorId, newBalance);
+      await FirebaseVendorService.updateVendorBalance(vendorId, _networkId, newBalance);
       return true;
-    } catch (e) {
+    } on Exception catch (e) {
       _error = e.toString();
       notifyListeners();
       return false;
     }
   }
 
-  /// تحديث مخزون متجر
+  /// تحديث مخزون متجر (يستخدم composite key)
   Future<bool> updateVendorStock(String vendorId, int newStock) async {
     try {
-      await FirebaseVendorService.updateVendorStock(vendorId, newStock);
+      await FirebaseVendorService.updateVendorStock(vendorId, _networkId, newStock);
       return true;
-    } catch (e) {
+    } on Exception catch (e) {
       _error = e.toString();
       notifyListeners();
       return false;

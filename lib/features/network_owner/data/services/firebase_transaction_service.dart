@@ -9,10 +9,9 @@ class FirebaseTransactionService {
   /// إضافة معاملة جديدة
   static Future<String> addTransaction(TransactionModel transaction) async {
     try {
-      final docRef =
-          await _firestore.collection(_collection).add(transaction.toJson());
+      final docRef = await _firestore.collection(_collection).add(transaction.toJson());
       return docRef.id;
-    } catch (e) {
+    } on Exception catch (e) {
       throw Exception('فشل في إضافة المعاملة: $e');
     }
   }
@@ -60,40 +59,46 @@ class FirebaseTransactionService {
 
       double totalCharges = 0;
       double totalPayments = 0;
-      int totalTransactions = snapshot.docs.length;
+      final totalTransactions = snapshot.docs.length;
       DateTime? lastTransactionDate;
 
-      for (var doc in snapshot.docs) {
+      for (final doc in snapshot.docs) {
         final data = doc.data();
         final amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
         final type = data['type'] as String?;
         final date = (data['date'] as Timestamp?)?.toDate();
 
-        if (type == 'charge' || type == 'fee') {
-          totalCharges += amount.abs();
-        } else if (type == 'payment' || type == 'refund') {
+        // دعم المعاملات القديمة والجديدة
+        if (type == 'cash_payment_received') {
+          // معاملات قديمة: مبلغ موجب ولكنها دفعات
+          totalPayments += amount.abs();
+        } else if (amount > 0) {
+          // موجب = مستحقات (charge, fee)
+          totalCharges += amount;
+        } else if (amount < 0) {
+          // سالب = مدفوعات (payment, refund)
           totalPayments += amount.abs();
         }
 
         if (date != null) {
-          if (lastTransactionDate == null ||
-              date.isAfter(lastTransactionDate)) {
+          if (lastTransactionDate == null || date.isAfter(lastTransactionDate)) {
             lastTransactionDate = date;
           }
         }
       }
 
-      // حساب الرصيد من المعاملات
-      final currentBalance = totalCharges - totalPayments;
+      // حساب الرصيد = المستحقات - المدفوعات
+      // (كم يدين المتجر لمالك الشبكة)
+      final balance = totalCharges - totalPayments;
 
       return {
         'totalCharges': totalCharges,
         'totalPayments': totalPayments,
-        'currentBalance': currentBalance,
+        'balance': balance,
         'totalTransactions': totalTransactions,
         'lastTransactionDate': lastTransactionDate,
       };
-    } catch (e) {
+    } on Exception catch (e) {
       throw Exception('فشل في حساب ملخص الحساب: $e');
     }
   }
@@ -102,7 +107,7 @@ class FirebaseTransactionService {
   static Future<void> deleteTransaction(String transactionId) async {
     try {
       await _firestore.collection(_collection).doc(transactionId).delete();
-    } catch (e) {
+    } on Exception catch (e) {
       throw Exception('فشل في حذف المعاملة: $e');
     }
   }
@@ -118,14 +123,14 @@ class FirebaseTransactionService {
           .get();
 
       double total = 0;
-      for (var doc in snapshot.docs) {
+      for (final doc in snapshot.docs) {
         final data = doc.data();
         final amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
         total += amount.abs();
       }
 
       return total;
-    } catch (e) {
+    } on Exception {
       return 0;
     }
   }

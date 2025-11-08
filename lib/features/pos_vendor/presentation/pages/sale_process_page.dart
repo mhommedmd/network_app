@@ -52,6 +52,10 @@ class _SaleProcessPageState extends State<SaleProcessPage> {
   bool _loadingPackages = false;
   final TextEditingController _phoneCtrl = TextEditingController();
   bool _submitting = false;
+  
+  // Cache للحسابات لتحسين الأداء
+  double? _cachedTotal;
+  int? _cachedTotalQuantity;
 
   @override
   void initState() {
@@ -109,9 +113,7 @@ class _SaleProcessPageState extends State<SaleProcessPage> {
         .where('isActive', isEqualTo: true)
         .get();
 
-    final connections = connectionsSnapshot.docs
-        .map((doc) => NetworkConnectionModel.fromFirestore(doc))
-        .toList();
+    final connections = connectionsSnapshot.docs.map(NetworkConnectionModel.fromFirestore).toList();
 
     if (connections.isEmpty) {
       if (!mounted) return;
@@ -123,6 +125,7 @@ class _SaleProcessPageState extends State<SaleProcessPage> {
       return;
     }
 
+    if (!mounted) return;
     final selected = await showModalBottomSheet<NetworkConnectionModel>(
       context: context,
       backgroundColor: Colors.white,
@@ -209,9 +212,8 @@ class _SaleProcessPageState extends State<SaleProcessPage> {
     final vendorId = authProvider.user?.id ?? '';
 
     try {
-      // جلب الباقات
-      final packagesSnapshot =
-          await FirebasePackageService.getPackagesByNetwork(
+      // جلب الباقات المفعلة فقط
+      final packagesSnapshot = await FirebasePackageService.getActivePackagesByNetwork(
         _selectedNetwork!.networkId,
       ).first;
 
@@ -237,14 +239,17 @@ class _SaleProcessPageState extends State<SaleProcessPage> {
 
       setState(() {
         _packages = packagesSnapshot
-            .map((pkg) => _PackageWithQuantity(
-                  pkg,
-                  stock[pkg.id] ?? 0,
-                ))
+            .map(
+              (pkg) => _PackageWithQuantity(
+                pkg,
+                stock[pkg.id] ?? 0,
+              ),
+            )
+            .where((p) => p.availableStock > 0)  // ← فقط الباقات التي لديها مخزون
             .toList();
         _loadingPackages = false;
       });
-    } catch (e) {
+    } on Exception catch (e) {
       if (!mounted) return;
       setState(() {
         _packages = [];
@@ -325,7 +330,7 @@ class _SaleProcessPageState extends State<SaleProcessPage> {
         _phoneCtrl.clear();
         _submitting = false;
       });
-    } catch (e) {
+    } on Exception catch (e) {
       setState(() => _submitting = false);
       if (!mounted) return;
       final errorMessage = ErrorHandler.extractErrorMessage(e);
@@ -344,21 +349,29 @@ class _SaleProcessPageState extends State<SaleProcessPage> {
     return null;
   }
 
+  void _invalidateCache() {
+    _cachedTotal = null;
+    _cachedTotalQuantity = null;
+  }
+
   double _calculateTotal() {
-    return _packages.fold(
+    if (_cachedTotal != null) return _cachedTotal!;
+    
+    _cachedTotal = _packages.fold<double>(
       0.0,
-      (sum, p) => sum + (p.package.sellingPrice * p.quantity),
+      (total, p) => total + (p.package.sellingPrice * p.quantity),
     );
+    return _cachedTotal!;
   }
 
   int _getTotalQuantity() {
-    return _packages.fold(0, (sum, p) => sum + p.quantity);
+    if (_cachedTotalQuantity != null) return _cachedTotalQuantity!;
+    
+    _cachedTotalQuantity = _packages.fold<int>(0, (total, p) => total + p.quantity);
+    return _cachedTotalQuantity!;
   }
 
-  bool get _canSell =>
-      _selectedNetwork != null &&
-      _packages.any((p) => p.quantity > 0) &&
-      !_submitting;
+  bool get _canSell => _selectedNetwork != null && _packages.any((p) => p.quantity > 0) && !_submitting;
 
   @override
   Widget build(BuildContext context) {
@@ -484,7 +497,8 @@ class _SaleProcessPageState extends State<SaleProcessPage> {
 
                           // قائمة الباقات
                           ..._packages.map(
-                              (pkgWithQty) => _buildPackageCard(pkgWithQty)),
+                            _buildPackageCard,
+                          ),
 
                           SizedBox(height: 16.h),
 
@@ -512,14 +526,35 @@ class _SaleProcessPageState extends State<SaleProcessPage> {
                                       ),
                                       decoration: BoxDecoration(
                                         color: AppColors.gray100,
-                                        borderRadius:
-                                            BorderRadius.circular(6.r),
+                                        borderRadius: BorderRadius.circular(6.r),
                                       ),
                                       child: Text(
                                         'اختياري',
                                         style: TextStyle(
                                           fontSize: 10.sp,
                                           color: AppColors.gray600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                SizedBox(height: 6.h),
+                                // توضيح
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.info_outline,
+                                      size: 14.w,
+                                      color: AppColors.blue500,
+                                    ),
+                                    SizedBox(width: 4.w),
+                                    Expanded(
+                                      child: Text(
+                                        'سيتم إرسال أرقام الكروت إلى رقم الهاتف عبر الواتساب',
+                                        style: TextStyle(
+                                          fontSize: 11.sp,
+                                          color: AppColors.blue700,
+                                          height: 1.3,
                                         ),
                                       ),
                                     ),
@@ -546,9 +581,7 @@ class _SaleProcessPageState extends State<SaleProcessPage> {
                                       horizontal: 16.w,
                                       vertical: 14.h,
                                     ),
-                                    errorText: _phoneCtrl.text.isNotEmpty
-                                        ? _validatePhone(_phoneCtrl.text)
-                                        : null,
+                                    errorText: _phoneCtrl.text.isNotEmpty ? _validatePhone(_phoneCtrl.text) : null,
                                   ),
                                 ),
                               ],
@@ -570,8 +603,7 @@ class _SaleProcessPageState extends State<SaleProcessPage> {
                                 ),
                                 borderRadius: BorderRadius.circular(16.r),
                                 border: Border.all(
-                                  color:
-                                      AppColors.primary.withValues(alpha: 0.2),
+                                  color: AppColors.primary.withValues(alpha: 0.2),
                                 ),
                               ),
                               child: Column(
@@ -595,33 +627,33 @@ class _SaleProcessPageState extends State<SaleProcessPage> {
                                     ],
                                   ),
                                   SizedBox(height: 12.h),
-                                  ..._packages
-                                      .where((p) => p.quantity > 0)
-                                      .map((p) => Padding(
-                                            padding: EdgeInsets.only(
-                                              bottom: 8.h,
-                                            ),
-                                            child: Row(
-                                              children: [
-                                                Expanded(
-                                                  child: Text(
-                                                    p.package.name,
-                                                    style: TextStyle(
-                                                      fontSize: 13.sp,
-                                                      color: AppColors.gray800,
-                                                    ),
-                                                  ),
-                                                ),
-                                                Text(
-                                                  '${p.quantity} × ${p.package.sellingPrice.toStringAsFixed(0)}',
+                                  ..._packages.where((p) => p.quantity > 0).map(
+                                        (p) => Padding(
+                                          padding: EdgeInsets.only(
+                                            bottom: 8.h,
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  p.package.name,
                                                   style: TextStyle(
-                                                    fontSize: 12.sp,
-                                                    color: AppColors.gray600,
+                                                    fontSize: 13.sp,
+                                                    color: AppColors.gray800,
                                                   ),
                                                 ),
-                                              ],
-                                            ),
-                                          )),
+                                              ),
+                                              Text(
+                                                '${p.quantity} × ${p.package.sellingPrice.toStringAsFixed(0)}',
+                                                style: TextStyle(
+                                                  fontSize: 12.sp,
+                                                  color: AppColors.gray600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
                                   Divider(height: 20.h),
                                   Row(
                                     children: [
@@ -643,7 +675,8 @@ class _SaleProcessPageState extends State<SaleProcessPage> {
                                       ),
                                       Text(
                                         CurrencyFormatter.format(
-                                            _calculateTotal()),
+                                          _calculateTotal(),
+                                        ),
                                         style: TextStyle(
                                           fontSize: 22.sp,
                                           fontWeight: FontWeight.w700,
@@ -734,9 +767,7 @@ class _SaleProcessPageState extends State<SaleProcessPage> {
             width: 48.w,
             height: 48.w,
             decoration: BoxDecoration(
-              color: value != null
-                  ? AppColors.primary.withValues(alpha: 0.1)
-                  : AppColors.gray100,
+              color: value != null ? AppColors.primary.withValues(alpha: 0.1) : AppColors.gray100,
               borderRadius: BorderRadius.circular(12.r),
             ),
             child: Icon(
@@ -763,8 +794,7 @@ class _SaleProcessPageState extends State<SaleProcessPage> {
                   style: TextStyle(
                     fontSize: 15.sp,
                     fontWeight: FontWeight.w600,
-                    color:
-                        value != null ? AppColors.gray900 : AppColors.gray400,
+                    color: value != null ? AppColors.gray900 : AppColors.gray400,
                   ),
                 ),
               ],
@@ -782,77 +812,129 @@ class _SaleProcessPageState extends State<SaleProcessPage> {
 
   Widget _buildPackageCard(_PackageWithQuantity pkgWithQty) {
     final isAvailable = pkgWithQty.availableStock > 0;
+    
+    // حساب حجم الباقة
+    final pkg = pkgWithQty.package;
+    final sizeGB = pkg.dataSizeGB > 0 
+        ? pkg.dataSizeGB 
+        : (pkg.dataSizeMB / 1024);
+    final sizeText = sizeGB >= 1 
+        ? '${sizeGB.toStringAsFixed(0)} GB' 
+        : '${pkg.dataSizeMB} MB';
 
     return AppCard(
-      padding: EdgeInsets.all(16.w),
-      margin: EdgeInsets.only(bottom: 12.h),
+      padding: EdgeInsets.all(14.w),
+      margin: EdgeInsets.only(bottom: 10.h),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
+              // أيقونة الباقة
               Container(
-                width: 44.w,
-                height: 44.w,
+                width: 42.w,
+                height: 42.w,
                 decoration: BoxDecoration(
-                  color: isAvailable
-                      ? AppColors.success.withValues(alpha: 0.1)
-                      : AppColors.gray100,
+                  gradient: LinearGradient(
+                    colors: [
+                      AppColors.primary.withValues(alpha: 0.15),
+                      AppColors.primary.withValues(alpha: 0.05),
+                    ],
+                  ),
                   borderRadius: BorderRadius.circular(10.r),
                 ),
                 child: Icon(
                   Icons.wifi,
-                  color: isAvailable ? AppColors.success : AppColors.gray400,
+                  color: AppColors.primary,
                   size: 22.w,
                 ),
               ),
               SizedBox(width: 12.w),
+              
+              // معلومات الباقة
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      pkgWithQty.package.name,
+                      pkg.name,
                       style: TextStyle(
-                        fontSize: 15.sp,
-                        fontWeight: FontWeight.w600,
-                        color:
-                            isAvailable ? AppColors.gray900 : AppColors.gray400,
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.gray900,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     SizedBox(height: 4.h),
                     Row(
                       children: [
+                        // حجم الباقة
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 6.w,
+                            vertical: 2.h,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.blue100,
+                            borderRadius: BorderRadius.circular(4.r),
+                          ),
+                          child: Text(
+                            sizeText,
+                            style: TextStyle(
+                              fontSize: 9.sp,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.blue700,
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 4.w),
+                        // الصلاحية
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 6.w,
+                            vertical: 2.h,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.success.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(4.r),
+                          ),
+                          child: Text(
+                            '${pkg.validityDays} يوم',
+                            style: TextStyle(
+                              fontSize: 9.sp,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.success,
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 6.w),
+                        // السعر
                         Text(
-                          '${pkgWithQty.package.sellingPrice.toStringAsFixed(0)} ر.ي',
+                          '${pkg.sellingPrice.toStringAsFixed(0)} ر.ي',
                           style: TextStyle(
-                            fontSize: 14.sp,
+                            fontSize: 12.sp,
                             fontWeight: FontWeight.w700,
                             color: AppColors.primary,
                           ),
                         ),
-                        SizedBox(width: 12.w),
+                        const Spacer(),
+                        // المتوفر
                         Container(
                           padding: EdgeInsets.symmetric(
                             horizontal: 8.w,
-                            vertical: 2.h,
+                            vertical: 3.h,
                           ),
                           decoration: BoxDecoration(
-                            color: isAvailable
-                                ? AppColors.success.withValues(alpha: 0.1)
-                                : AppColors.gray100,
+                            color: AppColors.success.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(6.r),
                           ),
                           child: Text(
-                            isAvailable
-                                ? 'متوفر: ${pkgWithQty.availableStock}'
-                                : 'نفذت',
+                            'متوفر: ${pkgWithQty.availableStock}',
                             style: TextStyle(
-                              fontSize: 11.sp,
+                              fontSize: 10.sp,
                               fontWeight: FontWeight.w600,
-                              color: isAvailable
-                                  ? AppColors.success
-                                  : AppColors.error,
+                              color: AppColors.success,
                             ),
                           ),
                         ),
@@ -870,7 +952,12 @@ class _SaleProcessPageState extends State<SaleProcessPage> {
                 _buildQuantityButton(
                   icon: Icons.remove,
                   onTap: pkgWithQty.quantity > 0
-                      ? () => setState(() => pkgWithQty.quantity--)
+                      ? () {
+                          setState(() {
+                            pkgWithQty.quantity--;
+                            _invalidateCache();
+                          });
+                        }
                       : null,
                 ),
                 Expanded(
@@ -878,14 +965,10 @@ class _SaleProcessPageState extends State<SaleProcessPage> {
                     margin: EdgeInsets.symmetric(horizontal: 12.w),
                     padding: EdgeInsets.symmetric(vertical: 10.h),
                     decoration: BoxDecoration(
-                      color: pkgWithQty.quantity > 0
-                          ? AppColors.primary.withValues(alpha: 0.1)
-                          : AppColors.gray50,
+                      color: pkgWithQty.quantity > 0 ? AppColors.primary.withValues(alpha: 0.1) : AppColors.gray50,
                       borderRadius: BorderRadius.circular(12.r),
                       border: Border.all(
-                        color: pkgWithQty.quantity > 0
-                            ? AppColors.primary.withValues(alpha: 0.3)
-                            : AppColors.gray200,
+                        color: pkgWithQty.quantity > 0 ? AppColors.primary.withValues(alpha: 0.3) : AppColors.gray200,
                       ),
                     ),
                     child: Text(
@@ -894,9 +977,7 @@ class _SaleProcessPageState extends State<SaleProcessPage> {
                       style: TextStyle(
                         fontSize: 20.sp,
                         fontWeight: FontWeight.w700,
-                        color: pkgWithQty.quantity > 0
-                            ? AppColors.primary
-                            : AppColors.gray400,
+                        color: pkgWithQty.quantity > 0 ? AppColors.primary : AppColors.gray400,
                       ),
                     ),
                   ),
@@ -904,7 +985,12 @@ class _SaleProcessPageState extends State<SaleProcessPage> {
                 _buildQuantityButton(
                   icon: Icons.add,
                   onTap: pkgWithQty.quantity < pkgWithQty.availableStock
-                      ? () => setState(() => pkgWithQty.quantity++)
+                      ? () {
+                          setState(() {
+                            pkgWithQty.quantity++;
+                            _invalidateCache();
+                          });
+                        }
                       : null,
                 ),
               ],
@@ -959,8 +1045,7 @@ class _SaleSuccessDialog extends StatelessWidget {
     return Directionality(
       textDirection: ui.TextDirection.rtl,
       child: AlertDialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.r)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.r)),
         contentPadding: EdgeInsets.zero,
         content: SingleChildScrollView(
           child: Column(
@@ -971,8 +1056,7 @@ class _SaleSuccessDialog extends StatelessWidget {
                 padding: EdgeInsets.all(24.w),
                 decoration: BoxDecoration(
                   color: AppColors.success.withValues(alpha: 0.1),
-                  borderRadius:
-                      BorderRadius.vertical(top: Radius.circular(20.r)),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20.r)),
                 ),
                 child: Column(
                   children: [
@@ -1098,7 +1182,8 @@ class _SaleSuccessDialog extends StatelessWidget {
                                   IconButton(
                                     onPressed: () {
                                       Clipboard.setData(
-                                          ClipboardData(text: code));
+                                        ClipboardData(text: code),
+                                      );
                                       CustomToast.info(
                                         context,
                                         'تم نسخه إلى الحافظة',

@@ -13,15 +13,17 @@ class OrderCard extends StatelessWidget {
     required this.order,
     this.onApprove,
     this.onReject,
+    this.onDelete,
     super.key,
   });
 
   final OrderModel order;
   final VoidCallback? onApprove;
   final VoidCallback? onReject;
+  final VoidCallback? onDelete;
 
-  Color get _statusColor {
-    switch (order.status) {
+  static Color _getStatusColor(String status) {
+    switch (status) {
       case 'pending':
         return AppColors.warning;
       case 'approved':
@@ -33,8 +35,8 @@ class OrderCard extends StatelessWidget {
     }
   }
 
-  String get _statusText {
-    switch (order.status) {
+  static String _getStatusText(String status) {
+    switch (status) {
       case 'pending':
         return 'قيد الانتظار';
       case 'approved':
@@ -42,11 +44,11 @@ class OrderCard extends StatelessWidget {
       case 'rejected':
         return 'مرفوض';
       default:
-        return order.status;
+        return status;
     }
   }
 
-  String _formatDate(DateTime date) {
+  static String _formatDate(DateTime date) {
     final now = DateTime.now();
     final difference = now.difference(date);
 
@@ -63,6 +65,52 @@ class OrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final canDelete = order.status != 'pending' && onDelete != null;
+
+    if (canDelete) {
+      return Dismissible(
+        key: Key('order_${order.id}'),
+        direction: DismissDirection.endToStart,
+        confirmDismiss: (direction) async {
+          // حذف مباشر بدون حوار للطلبات
+          if (onDelete != null) {
+            onDelete!();
+          }
+          return false;
+        },
+        background: Container(
+          alignment: Alignment.centerLeft,
+          padding: EdgeInsets.only(left: 20.w),
+          decoration: BoxDecoration(
+            color: AppColors.error,
+            borderRadius: BorderRadius.circular(12.r),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.delete_forever, color: Colors.white, size: 28.w),
+              SizedBox(width: 8.w),
+              Text(
+                'حذف',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        child: _buildOrderCard(context),
+      );
+    }
+
+    return _buildOrderCard(context);
+  }
+
+  Widget _buildOrderCard(BuildContext context) {
+    final statusColor = _getStatusColor(order.status);
+    final statusText = _getStatusText(order.status);
+    
     return AppCard(
       padding: EdgeInsets.all(16.w),
       child: Column(
@@ -97,17 +145,16 @@ class OrderCard extends StatelessWidget {
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
                 decoration: BoxDecoration(
-                  color: _statusColor.withValues(alpha: 0.1),
+                  color: statusColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8.r),
-                  border:
-                      Border.all(color: _statusColor.withValues(alpha: 0.3)),
+                  border: Border.all(color: statusColor.withValues(alpha: 0.3)),
                 ),
                 child: Text(
-                  _statusText,
+                  statusText,
                   style: TextStyle(
                     fontSize: 12.sp,
                     fontWeight: FontWeight.w600,
-                    color: _statusColor,
+                    color: statusColor,
                   ),
                 ),
               ),
@@ -115,7 +162,7 @@ class OrderCard extends StatelessWidget {
           ),
 
           SizedBox(height: 16.h),
-          Divider(color: AppColors.gray200, height: 1),
+          const Divider(color: AppColors.gray200, height: 1),
           SizedBox(height: 16.h),
 
           // تفاصيل الطلب - قائمة الباقات
@@ -129,8 +176,11 @@ class OrderCard extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.inventory_2_outlined,
-                      size: 18.w, color: AppColors.primary),
+                  Icon(
+                    Icons.inventory_2_outlined,
+                    size: 18.w,
+                    color: AppColors.primary,
+                  ),
                   SizedBox(width: 8.w),
                   Expanded(
                     child: Column(
@@ -173,8 +223,11 @@ class OrderCard extends StatelessWidget {
           // إجمالي الكروت
           Row(
             children: [
-              Icon(Icons.confirmation_number_outlined,
-                  size: 18.w, color: AppColors.gray500),
+              Icon(
+                Icons.confirmation_number_outlined,
+                size: 18.w,
+                color: AppColors.gray500,
+              ),
               SizedBox(width: 8.w),
               Text(
                 'إجمالي الكروت: ${order.totalCards}',
@@ -228,9 +281,7 @@ class OrderCard extends StatelessWidget {
                     onPressed: order.status == 'pending' ? onReject : null,
                     icon: Icon(
                       Icons.close,
-                      color: order.status == 'pending'
-                          ? AppColors.error
-                          : AppColors.gray400,
+                      color: order.status == 'pending' ? AppColors.error : AppColors.gray400,
                       size: 18.w,
                     ),
                     label: Text(
@@ -241,13 +292,9 @@ class OrderCard extends StatelessWidget {
                       ),
                     ),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: order.status == 'pending'
-                          ? AppColors.error
-                          : AppColors.gray400,
+                      foregroundColor: order.status == 'pending' ? AppColors.error : AppColors.gray400,
                       side: BorderSide(
-                        color: order.status == 'pending'
-                            ? AppColors.error
-                            : AppColors.gray300,
+                        color: order.status == 'pending' ? AppColors.error : AppColors.gray300,
                       ),
                       padding: EdgeInsets.symmetric(vertical: 14.h),
                       shape: RoundedRectangleBorder(
@@ -263,9 +310,7 @@ class OrderCard extends StatelessWidget {
                     onPressed: order.status == 'pending' ? onApprove : null,
                     icon: Icon(
                       Icons.check,
-                      color: order.status == 'pending'
-                          ? Colors.white
-                          : AppColors.gray400,
+                      color: order.status == 'pending' ? Colors.white : AppColors.gray400,
                       size: 18.w,
                     ),
                     label: Text(
@@ -277,9 +322,7 @@ class OrderCard extends StatelessWidget {
                       ),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: order.status == 'pending'
-                          ? AppColors.success
-                          : AppColors.gray300,
+                      backgroundColor: order.status == 'pending' ? AppColors.success : AppColors.gray300,
                       foregroundColor: Colors.white,
                       padding: EdgeInsets.symmetric(vertical: 14.h),
                       shape: RoundedRectangleBorder(

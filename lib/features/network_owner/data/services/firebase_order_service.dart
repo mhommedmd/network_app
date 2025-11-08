@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/order_model.dart';
+import 'firebase_notification_service.dart';
 
 /// خدمة Firebase لإدارة الطلبات
 class FirebaseOrderService {
@@ -13,10 +14,21 @@ class FirebaseOrderService {
   /// إنشاء طلب جديد
   static Future<String> createOrder(OrderModel order) async {
     try {
-      final docRef =
-          await _firestore.collection(_ordersCollection).add(order.toJson());
+      final docRef = await _firestore.collection(_ordersCollection).add(order.toJson());
+
+      // إرسال إشعار لمالك الشبكة
+      try {
+        await FirebaseNotificationService.notifyNewOrder(
+          networkId: order.networkId,
+          vendorName: order.vendorName,
+          orderId: docRef.id,
+        );
+      } on Exception {
+        // تجاهل خطأ الإشعار ولا تفشل العملية
+      }
+
       return docRef.id;
-    } catch (e) {
+    } on Exception catch (e) {
       throw Exception('فشل في إنشاء الطلب: $e');
     }
   }
@@ -29,7 +41,7 @@ class FirebaseOrderService {
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList();
+      return snapshot.docs.map(OrderModel.fromFirestore).toList();
     });
   }
 
@@ -41,7 +53,7 @@ class FirebaseOrderService {
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs.map((doc) => OrderModel.fromFirestore(doc)).toList();
+      return snapshot.docs.map(OrderModel.fromFirestore).toList();
     });
   }
 
@@ -74,8 +86,7 @@ class FirebaseOrderService {
             final cardData = cardDoc.data();
 
             // إنشاء كرت في مخزون المتجر
-            final vendorCardRef =
-                _firestore.collection(_vendorCardsCollection).doc();
+            final vendorCardRef = _firestore.collection(_vendorCardsCollection).doc();
 
             transaction.set(vendorCardRef, {
               'vendorId': order.vendorId,
@@ -112,15 +123,17 @@ class FirebaseOrderService {
         });
       });
 
-      // 4. إنشاء معاملة في transactions (خارج runTransaction)
+      // 4. إنشاء معاملات في transactions و vendor_transactions (خارج runTransaction)
       final now = DateTime.now();
+
+      // معاملة الشبكة
       final transactionData = {
         'vendorId': order.vendorId,
+        'vendorName': order.vendorName, // ✅ إضافة vendorName
         'networkId': order.networkId,
         'type': 'charge', // شحن - إضافة رصيد على المتجر
         'amount': order.totalAmount,
-        'description':
-            'طلب كروت - ${order.items.length} باقة - ${order.totalCards} كرت',
+        'description': 'طلب كروت - ${order.items.length} باقة - ${order.totalCards} كرت',
         'reference': 'ORD-${order.id.substring(0, 8).toUpperCase()}',
         'status': 'completed',
         'balanceAfter': 0.0, // سيتم تحديثه لاحقاً عند الحاجة
@@ -133,15 +146,34 @@ class FirebaseOrderService {
 
       await _firestore.collection(_transactionsCollection).add(transactionData);
 
-      print('✅ Transaction recorded for order: ${order.id}');
-      print('   - vendorId: ${order.vendorId}');
-      print('   - networkId: ${order.networkId}');
-      print('   - type: charge');
-      print('   - amount: ${order.totalAmount}');
-      print('   - reference: ORD-${order.id.substring(0, 8).toUpperCase()}');
-      print('   - orderId: ${order.id}');
-    } catch (e) {
-      print('❌ Error approving order: $e');
+      // معاملة المتجر (✅ إضافة جديدة)
+      final vendorTransactionData = {
+        'vendorId': order.vendorId,
+        'networkId': order.networkId,
+        'networkName': order.networkName,
+        'type': 'charge',
+        'amount': order.totalAmount, // موجب (المتجر يدين)
+        'description': 'طلب كروت - ${order.items.length} باقة - ${order.totalCards} كرت',
+        'status': 'completed',
+        'date': Timestamp.fromDate(now),
+        'createdAt': Timestamp.fromDate(now),
+        'orderId': order.id,
+      };
+
+      await _firestore.collection('vendor_transactions').add(vendorTransactionData);
+
+      // إرسال إشعار للمتجر بالموافقة
+      try {
+        await FirebaseNotificationService.notifyOrderApproved(
+          vendorId: order.vendorId,
+          networkName: order.networkName,
+          orderId: order.id,
+          cardsCount: order.totalCards,
+        );
+      } on Exception {
+        // تجاهل خطأ الإشعار
+      }
+    } on Exception catch (e) {
       throw Exception('فشل في الموافقة على الطلب: $e');
     }
   }
@@ -149,24 +181,43 @@ class FirebaseOrderService {
   /// رفض الطلب
   static Future<void> rejectOrder(String orderId, {String? notes}) async {
     try {
+      // الحصول على بيانات الطلب أولاً
+      final orderDoc = await _firestore.collection(_ordersCollection).doc(orderId).get();
+
+      if (!orderDoc.exists) {
+        throw Exception('الطلب غير موجود');
+      }
+
+      final order = OrderModel.fromFirestore(orderDoc);
+
+      // تحديث حالة الطلب
       await _firestore.collection(_ordersCollection).doc(orderId).update({
         'status': 'rejected',
         'rejectedAt': FieldValue.serverTimestamp(),
         if (notes != null && notes.isNotEmpty) 'notes': notes,
       });
-    } catch (e) {
+
+      // إرسال إشعار للمتجر بالرفض
+      try {
+        await FirebaseNotificationService.notifyOrderRejected(
+          vendorId: order.vendorId,
+          networkName: order.networkName,
+          orderId: orderId,
+        );
+      } on Exception {
+        // تجاهل خطأ الإشعار
+      }
+    } on Exception catch (e) {
       throw Exception('فشل في رفض الطلب: $e');
     }
   }
 
   /// حساب إجمالي الطلبات حسب الحالة
   static Future<Map<String, int>> getOrdersCountByStatus(
-      String networkId) async {
+    String networkId,
+  ) async {
     try {
-      final snapshot = await _firestore
-          .collection(_ordersCollection)
-          .where('networkId', isEqualTo: networkId)
-          .get();
+      final snapshot = await _firestore.collection(_ordersCollection).where('networkId', isEqualTo: networkId).get();
 
       final counts = <String, int>{
         'pending': 0,
@@ -180,14 +231,15 @@ class FirebaseOrderService {
       }
 
       return counts;
-    } catch (e) {
+    } on Exception {
       return {'pending': 0, 'approved': 0, 'rejected': 0};
     }
   }
 
   /// التحقق من توفر الكمية المطلوبة (للشبكة فقط عند الموافقة)
   static Future<Map<String, int>> checkOrderStockAvailability(
-      OrderModel order) async {
+    OrderModel order,
+  ) async {
     try {
       final availability = <String, int>{};
 
@@ -203,8 +255,17 @@ class FirebaseOrderService {
       }
 
       return availability;
-    } catch (e) {
+    } on Exception {
       return {};
+    }
+  }
+
+  /// حذف طلب (فقط للطلبات المعالجة - approved أو rejected)
+  static Future<void> deleteOrder(String orderId) async {
+    try {
+      await _firestore.collection(_ordersCollection).doc(orderId).delete();
+    } on Exception catch (e) {
+      throw Exception('فشل في حذف الطلب: $e');
     }
   }
 }

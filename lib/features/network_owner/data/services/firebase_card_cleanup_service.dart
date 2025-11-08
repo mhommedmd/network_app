@@ -10,7 +10,7 @@ class FirebaseCardCleanupService {
     try {
       final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
 
-      print('🗑️ Starting cleanup of sold cards older than ${thirtyDaysAgo}');
+      print('🗑️ Starting cleanup of sold cards older than $thirtyDaysAgo');
 
       // البحث عن الكروت المباعة القديمة في vendor_cards
       final vendorCardsSnapshot = await _firestore
@@ -20,9 +20,10 @@ class FirebaseCardCleanupService {
           .get();
 
       print(
-          '📊 Found ${vendorCardsSnapshot.docs.length} sold vendor cards to delete');
+        '📊 Found ${vendorCardsSnapshot.docs.length} sold vendor cards to delete',
+      );
 
-      int deletedCount = 0;
+      var deletedCount = 0;
 
       // حذف الكروت
       for (final doc in vendorCardsSnapshot.docs) {
@@ -40,7 +41,8 @@ class FirebaseCardCleanupService {
           .get();
 
       print(
-          '📊 Found ${cardsSnapshot.docs.length} sold network cards to delete');
+        '📊 Found ${cardsSnapshot.docs.length} sold network cards to delete',
+      );
 
       for (final doc in cardsSnapshot.docs) {
         await doc.reference.delete();
@@ -50,7 +52,7 @@ class FirebaseCardCleanupService {
       print('✅ Total deleted: $deletedCount cards');
 
       return deletedCount;
-    } catch (e) {
+    } on Exception catch (e) {
       print('❌ Error during cleanup: $e');
       return 0;
     }
@@ -58,7 +60,8 @@ class FirebaseCardCleanupService {
 
   /// حذف الكروت المباعة لشبكة معينة (أكثر من 30 يوم)
   static Future<int> deleteNetworkSoldCardsOlderThan30Days(
-      String networkId) async {
+    String networkId,
+  ) async {
     try {
       final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
 
@@ -72,7 +75,7 @@ class FirebaseCardCleanupService {
           .where('soldAt', isLessThan: Timestamp.fromDate(thirtyDaysAgo))
           .get();
 
-      int deletedCount = 0;
+      var deletedCount = 0;
 
       for (final doc in vendorCardsSnapshot.docs) {
         await doc.reference.delete();
@@ -95,7 +98,7 @@ class FirebaseCardCleanupService {
       print('✅ Deleted $deletedCount old sold cards for network $networkId');
 
       return deletedCount;
-    } catch (e) {
+    } on Exception catch (e) {
       print('❌ Error: $e');
       return 0;
     }
@@ -109,10 +112,8 @@ class FirebaseCardCleanupService {
       final lastCleanup = prefs.getInt('last_cleanup_timestamp');
 
       if (lastCleanup != null) {
-        final lastCleanupDate =
-            DateTime.fromMillisecondsSinceEpoch(lastCleanup);
-        final daysSinceLastCleanup =
-            DateTime.now().difference(lastCleanupDate).inDays;
+        final lastCleanupDate = DateTime.fromMillisecondsSinceEpoch(lastCleanup);
+        final daysSinceLastCleanup = DateTime.now().difference(lastCleanupDate).inDays;
 
         // إذا تم التنظيف خلال آخر 7 أيام، لا داعي للتنظيف مرة أخرى
         if (daysSinceLastCleanup < 7) {
@@ -130,8 +131,10 @@ class FirebaseCardCleanupService {
 
       // حفظ وقت التنظيف
       await prefs.setInt(
-          'last_cleanup_timestamp', DateTime.now().millisecondsSinceEpoch);
-    } catch (e) {
+        'last_cleanup_timestamp',
+        DateTime.now().millisecondsSinceEpoch,
+      );
+    } on Exception catch (e) {
       print('❌ Cleanup error: $e');
     }
   }

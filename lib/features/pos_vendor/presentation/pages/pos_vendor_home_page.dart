@@ -18,11 +18,12 @@ import '../../../../shared/widgets/skeleton/skeleton_card.dart';
 import '../../../../shared/widgets/skeleton/skeleton_loading.dart';
 import '../../../../shared/widgets/toast/toast.dart';
 import '../../../network_owner/data/models/package_model.dart';
+import '../../../network_owner/data/services/firebase_cash_payment_service.dart';
 import '../../../network_owner/data/services/firebase_package_service.dart';
 import '../../data/models/network_connection_model.dart';
-import '../../data/services/firebase_vendor_inventory_service.dart';
-import '../../data/services/firebase_sale_service.dart';
 import '../../data/models/sale_model.dart';
+import '../../data/services/firebase_sale_service.dart';
+import '../../data/services/firebase_vendor_inventory_service.dart';
 
 typedef StartSaleCallback = void Function(int id);
 
@@ -43,18 +44,15 @@ class PosVendorHomePage extends StatelessWidget {
     if (url.isEmpty) return false;
     try {
       final uri = Uri.parse(url);
-      return uri.hasScheme &&
-          (uri.scheme == 'http' || uri.scheme == 'https') &&
-          uri.host.isNotEmpty;
-    } catch (e) {
+      return uri.hasScheme && (uri.scheme == 'http' || uri.scheme == 'https') && uri.host.isNotEmpty;
+    } on Exception {
       return false;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = context.watch<AuthProvider>();
-    final userName = authProvider.user?.name ?? 'نقطة بيع';
+    final userName = context.select((AuthProvider p) => p.user?.name ?? 'نقطة بيع');
 
     return Scaffold(
       backgroundColor: AppColors.gray50,
@@ -80,21 +78,18 @@ class PosVendorHomePage extends StatelessWidget {
                 textDirection: ui.TextDirection.rtl,
                 children: [
                   // Profile avatar
-                  CircleAvatar(
-                    radius: 22.w,
-                    backgroundColor: Colors.white.withValues(alpha: 0.2),
-                    backgroundImage: authProvider.user?.avatar != null &&
-                            _isValidUrl(authProvider.user!.avatar!)
-                        ? NetworkImage(authProvider.user!.avatar!)
-                        : null,
-                    child: authProvider.user?.avatar == null ||
-                            !_isValidUrl(authProvider.user?.avatar ?? '')
-                        ? Icon(
-                            Icons.person,
-                            color: Colors.white,
-                            size: 26.w,
-                          )
-                        : null,
+                  Consumer<AuthProvider>(
+                    builder: (context, authProvider, _) {
+                      final avatar = authProvider.user?.avatar;
+                      final hasValidAvatar = avatar != null && _isValidUrl(avatar);
+
+                      return CircleAvatar(
+                        radius: 22.w,
+                        backgroundColor: Colors.white.withValues(alpha: 0.2),
+                        backgroundImage: hasValidAvatar ? NetworkImage(avatar) : null,
+                        child: hasValidAvatar ? null : Icon(Icons.person, color: Colors.white, size: 26.w),
+                      );
+                    },
                   ),
                   SizedBox(width: 12.w),
                   // Vendor name
@@ -124,30 +119,56 @@ class PosVendorHomePage extends StatelessWidget {
                       ],
                     ),
                   ),
-                  IconButton(
-                    onPressed: () => context.push('/notifications'),
-                    icon: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Icon(
-                          Icons.notifications_none,
-                          color: Colors.white,
-                          size: 28.w,
+                  // زر الإشعارات مع عداد الدفعات المعلقة
+                  Consumer<AuthProvider>(
+                    builder: (context, authProvider, _) {
+                      return StreamBuilder<int>(
+                        stream: FirebaseCashPaymentService.getPendingPaymentsCount(
+                          authProvider.user?.id ?? '',
                         ),
-                        Positioned(
-                          top: -2,
-                          left: -2,
-                          child: Container(
-                            width: 10.w,
-                            height: 10.w,
-                            decoration: const BoxDecoration(
-                              color: AppColors.errorLight,
-                              shape: BoxShape.circle,
+                        builder: (context, snapshot) {
+                          final pendingCount = snapshot.data ?? 0;
+                          return IconButton(
+                            onPressed: () => context.push('/notifications'),
+                            icon: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                Icon(
+                                  Icons.notifications_none,
+                                  color: Colors.white,
+                                  size: 28.w,
+                                ),
+                                if (pendingCount > 0)
+                                  Positioned(
+                                    top: -2,
+                                    left: -2,
+                                    child: Container(
+                                      padding: EdgeInsets.all(4.w),
+                                      decoration: const BoxDecoration(
+                                        color: AppColors.errorLight,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      constraints: BoxConstraints(
+                                        minWidth: 18.w,
+                                        minHeight: 18.w,
+                                      ),
+                                      child: Text(
+                                        '$pendingCount',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10.sp,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
-                          ),
-                        ),
-                      ],
-                    ),
+                          );
+                        },
+                      );
+                    },
                   ),
                 ],
               ),
@@ -180,6 +201,8 @@ class PosVendorHomePage extends StatelessWidget {
   }
 
   Widget _quickActions(BuildContext context) {
+    final vendorId = context.read<AuthProvider>().user?.id ?? '';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -204,11 +227,20 @@ class PosVendorHomePage extends StatelessWidget {
             ),
             SizedBox(width: 20.w),
             Expanded(
-              child: _QuickActionTile(
-                icon: Icons.payments_outlined,
-                color: AppColors.warningDark,
-                label: 'دفعات نقدية',
-                onTap: onRecordCashPayment ?? () {},
+              child: StreamBuilder<int>(
+                stream: FirebaseCashPaymentService.getPendingPaymentsCount(
+                  vendorId,
+                ),
+                builder: (context, snapshot) {
+                  final pendingCount = snapshot.data ?? 0;
+                  return _QuickActionTileWithBadge(
+                    icon: Icons.payments_outlined,
+                    color: AppColors.warningDark,
+                    label: 'دفعات نقدية',
+                    badgeCount: pendingCount,
+                    onTap: onRecordCashPayment ?? () {},
+                  );
+                },
               ),
             ),
           ],
@@ -241,7 +273,6 @@ class _PosStatsSectionState extends State<_PosStatsSection> {
       _currentVendorId = vendorId;
       _availableCardsStream = _getAvailableCardsStream(vendorId);
       _monthSalesStream = _getMonthSalesStream(vendorId);
-      print('✨ Streams initialized for vendor: $vendorId');
     }
   }
 
@@ -273,8 +304,7 @@ class _PosStatsSectionState extends State<_PosStatsSection> {
                 StreamBuilder<double>(
                   stream: _monthSalesStream,
                   builder: (context, salesSnapshot) {
-                    if (salesSnapshot.connectionState ==
-                        ConnectionState.waiting) {
+                    if (salesSnapshot.connectionState == ConnectionState.waiting) {
                       return Text(
                         '...',
                         style: TextStyle(
@@ -286,7 +316,7 @@ class _PosStatsSectionState extends State<_PosStatsSection> {
                     }
 
                     if (salesSnapshot.hasError) {
-                      print('❌ Sales stream error: ${salesSnapshot.error}');
+                      // تسجيل الخطأ بشكل صامت
                       return Text(
                         '0 ر.ي',
                         style: TextStyle(
@@ -334,13 +364,10 @@ class _PosStatsSectionState extends State<_PosStatsSection> {
                   stream: _availableCardsStream,
                   builder: (context, snapshot) {
                     final availableCards = snapshot.data ?? 0;
-                    final isLoading =
-                        snapshot.connectionState == ConnectionState.waiting;
+                    final isLoading = snapshot.connectionState == ConnectionState.waiting;
 
                     return Text(
-                      isLoading
-                          ? '...'
-                          : '${NumberFormat('#,###', 'ar').format(availableCards)} كرت',
+                      isLoading ? '...' : '${NumberFormat('#,###', 'ar').format(availableCards)} كرت',
                       style: TextStyle(
                         color: AppColors.gray900,
                         fontSize: 16.sp,
@@ -359,42 +386,32 @@ class _PosStatsSectionState extends State<_PosStatsSection> {
 
   /// Stream لحساب الكروت المتاحة (يتحدث تلقائياً)
   Stream<int> _getAvailableCardsStream(String vendorId) {
-    print('🎯 Creating available cards stream for: $vendorId');
     return FirebaseFirestore.instance
         .collection('vendor_cards')
         .where('vendorId', isEqualTo: vendorId)
         .where('status', isEqualTo: 'available')
         .snapshots()
-        .map((snapshot) {
-      print('📦 Available cards updated: ${snapshot.docs.length}');
-      return snapshot.docs.length;
-    });
+        .map((snapshot) => snapshot.docs.length);
   }
 
   /// Stream لحساب مبيعات الشهر
   Stream<double> _getMonthSalesStream(String vendorId) {
     final now = DateTime.now();
-    final startOfMonth = DateTime(now.year, now.month, 1);
-
-    print('🎯 Creating month sales stream for: $vendorId from $startOfMonth');
+    final startOfMonth = DateTime(now.year, now.month);
 
     return FirebaseFirestore.instance
         .collection('sales')
         .where('vendorId', isEqualTo: vendorId)
-        .where('soldAt',
-            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
+        .where('soldAt', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
         .snapshots()
         .map((snapshot) {
-      print('📊 Month sales snapshot received: ${snapshot.docs.length} sales');
-      double total = 0.0;
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        final amount = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
-        total += amount;
-        print('   - Sale: ${doc.id}, amount: $amount');
-      }
-      print('💰 Total sales this month: $total');
-      return total;
+      return snapshot.docs.fold<double>(
+        0,
+        (total, doc) {
+          final amount = (doc.data()['totalAmount'] as num?)?.toDouble() ?? 0.0;
+          return total + amount;
+        },
+      );
     });
   }
 }
@@ -416,6 +433,7 @@ class _CustomNetworksSectionState extends State<_CustomNetworksSection> {
 
   Future<void> _loadCustomNetworks() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     final authProvider = context.read<AuthProvider>();
     final vendorId = authProvider.user?.id ?? '';
 
@@ -442,9 +460,7 @@ class _CustomNetworksSectionState extends State<_CustomNetworksSection> {
         .where('isActive', isEqualTo: true)
         .get();
 
-    final connections = connectionsSnapshot.docs
-        .map((doc) => NetworkConnectionModel.fromFirestore(doc))
-        .toList();
+    final connections = connectionsSnapshot.docs.map(NetworkConnectionModel.fromFirestore).toList();
 
     if (connections.isEmpty) {
       if (!mounted) return;
@@ -457,6 +473,7 @@ class _CustomNetworksSectionState extends State<_CustomNetworksSection> {
     }
 
     // عرض قائمة الشبكات للاختيار
+    if (!mounted) return;
     final selectedNetwork = await showDialog<NetworkConnectionModel>(
       context: context,
       builder: (context) => AlertDialog(
@@ -492,7 +509,9 @@ class _CustomNetworksSectionState extends State<_CustomNetworksSection> {
     if (selectedNetwork != null) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
-          'custom_network_${slotIndex}_$vendorId', selectedNetwork.networkId);
+        'custom_network_${slotIndex}_$vendorId',
+        selectedNetwork.networkId,
+      );
 
       setState(() {
         _customNetworkIds[slotIndex] = selectedNetwork.networkId;
@@ -565,7 +584,6 @@ class _CustomizeButton extends StatelessWidget {
               border: Border.all(
                 color: AppColors.gray300,
                 width: 2,
-                style: BorderStyle.solid,
               ),
             ),
             child: Icon(
@@ -621,8 +639,7 @@ class _CustomNetworkSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = context.watch<AuthProvider>();
-    final vendorId = authProvider.user?.id ?? '';
+    final vendorId = context.read<AuthProvider>().user?.id ?? '';
 
     return FutureBuilder<NetworkConnectionModel?>(
       future: _getNetworkConnection(vendorId, networkId),
@@ -645,7 +662,7 @@ class _CustomNetworkSection extends StatelessWidget {
                           children: [
                             const SkeletonLine(width: 120, height: 16),
                             SizedBox(height: 6.h),
-                            const SkeletonLine(width: 80, height: 12),
+                            const SkeletonLine(width: 80),
                           ],
                         ),
                       ),
@@ -695,7 +712,7 @@ class _CustomNetworkSection extends StatelessWidget {
 
             // باقات الشبكة
             StreamBuilder<List<PackageModel>>(
-              stream: FirebasePackageService.getPackagesByNetwork(networkId),
+              stream: FirebasePackageService.getActivePackagesByNetwork(networkId),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return Padding(
@@ -735,8 +752,19 @@ class _CustomNetworkSection extends StatelessWidget {
                   builder: (context, stockSnapshot) {
                     final packageStock = stockSnapshot.data ?? {};
 
+                    // فلترة الباقات لإظهار التي بها كروت فقط
+                    final packagesWithStock = packages.where((pkg) {
+                      final stock = packageStock[pkg.id] ?? 0;
+                      return stock > 0;
+                    }).toList();
+
+                    // إذا لم يكن هناك باقات بها كروت، لا نعرض القسم
+                    if (packagesWithStock.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
+
                     return _PackagesWrap(
-                      packages: packages,
+                      packages: packagesWithStock,
                       packageStock: packageStock,
                     );
                   },
@@ -750,7 +778,9 @@ class _CustomNetworkSection extends StatelessWidget {
   }
 
   Future<NetworkConnectionModel?> _getNetworkConnection(
-      String vendorId, String networkId) async {
+    String vendorId,
+    String networkId,
+  ) async {
     try {
       final firestore = FirebaseFirestore.instance;
       final snapshot = await firestore
@@ -763,7 +793,7 @@ class _CustomNetworkSection extends StatelessWidget {
       if (snapshot.docs.isEmpty) return null;
 
       return NetworkConnectionModel.fromFirestore(snapshot.docs.first);
-    } catch (e) {
+    } on Exception {
       return null;
     }
   }
@@ -779,6 +809,30 @@ class _PackagesWrap extends StatelessWidget {
   final List<PackageModel> packages;
   final Map<String, int> packageStock;
 
+  // Map ثابتة للألوان مع caching
+  static final Map<String, Color?> _colorCache = {};
+  static const _colorMap = <String, Color>{
+    'blue': AppColors.primary,
+    'green': AppColors.success,
+    'orange': AppColors.warning,
+    'red': AppColors.error,
+    'purple': Colors.purple,
+    'teal': Colors.teal,
+  };
+
+  static Color? _parseColor(String? colorString) {
+    if (colorString == null || colorString.isEmpty) return null;
+
+    final key = colorString.toLowerCase();
+    if (_colorCache.containsKey(key)) {
+      return _colorCache[key];
+    }
+
+    final color = _colorMap[key];
+    _colorCache[key] = color;
+    return color;
+  }
+
   @override
   Widget build(BuildContext context) {
     const double minCardWidth = 260;
@@ -788,9 +842,7 @@ class _PackagesWrap extends StatelessWidget {
         final spacing = 14.w;
         var columns = (maxWidth / (minCardWidth + spacing)).floor();
         if (columns < 1) columns = 1;
-        final cardWidth = columns == 1
-            ? maxWidth
-            : (maxWidth - (spacing * (columns - 1))) / columns;
+        final cardWidth = columns == 1 ? maxWidth : (maxWidth - (spacing * (columns - 1))) / columns;
 
         return Wrap(
           spacing: spacing,
@@ -798,8 +850,7 @@ class _PackagesWrap extends StatelessWidget {
           children: packages.asMap().entries.map((entry) {
             final index = entry.key;
             final pkg = entry.value;
-            final totalMb =
-                pkg.dataSizeMB > 0 ? pkg.dataSizeMB : pkg.dataSizeGB * 1024;
+            final totalMb = pkg.dataSizeMB > 0 ? pkg.dataSizeMB : pkg.dataSizeGB * 1024;
             final vendorStock = packageStock[pkg.id] ?? 0;
 
             return SizedBox(
@@ -832,12 +883,13 @@ class _PackagesWrap extends StatelessWidget {
                   if (connectionSnapshot.docs.isEmpty) return;
 
                   final connection = NetworkConnectionModel.fromFirestore(
-                      connectionSnapshot.docs.first);
+                    connectionSnapshot.docs.first,
+                  );
 
                   if (!context.mounted) return;
 
                   // فتح صفحة البيع مع تحديد الشبكة والباقة مسبقاً
-                  GoRouter.of(context).push(
+                  await GoRouter.of(context).push(
                     '/sale-process',
                     extra: {
                       'preselectedNetwork': connection,
@@ -851,21 +903,6 @@ class _PackagesWrap extends StatelessWidget {
         );
       },
     );
-  }
-
-  Color? _parseColor(String? colorString) {
-    if (colorString == null || colorString.isEmpty) return null;
-
-    final colorMap = <String, Color>{
-      'blue': AppColors.primary,
-      'green': AppColors.success,
-      'orange': AppColors.warning,
-      'red': AppColors.error,
-      'purple': Colors.purple,
-      'teal': Colors.teal,
-    };
-
-    return colorMap[colorString.toLowerCase()];
   }
 }
 
@@ -913,12 +950,88 @@ class _QuickActionTile extends StatelessWidget {
   }
 }
 
+/// زر إجراء سريع مع شارة عداد
+class _QuickActionTileWithBadge extends StatelessWidget {
+  const _QuickActionTileWithBadge({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.onTap,
+    this.badgeCount = 0,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String label;
+  final VoidCallback onTap;
+  final int badgeCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16.r),
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 10.h),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Icon(icon, color: color, size: 24.w),
+                  if (badgeCount > 0)
+                    Positioned(
+                      top: -6,
+                      right: -6,
+                      child: Container(
+                        padding: EdgeInsets.all(4.w),
+                        decoration: const BoxDecoration(
+                          color: AppColors.errorLight,
+                          shape: BoxShape.circle,
+                        ),
+                        constraints: BoxConstraints(
+                          minWidth: 18.w,
+                          minHeight: 18.w,
+                        ),
+                        child: Text(
+                          '$badgeCount',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 9.sp,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              SizedBox(height: 6.h),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12.sp,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.gray800,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// قسم آخر المبيعات
 class _RecentSalesSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final authProvider = context.watch<AuthProvider>();
-    final vendorId = authProvider.user?.id ?? '';
+    final vendorId = context.read<AuthProvider>().user?.id ?? '';
 
     if (vendorId.isEmpty) {
       return const SizedBox.shrink();
@@ -947,49 +1060,54 @@ class _RecentSalesSection extends StatelessWidget {
         ),
         SizedBox(height: 16.h),
         StreamBuilder<List<SaleModel>>(
-          stream:
-              FirebaseSaleService.getRecentSales(vendorId: vendorId, limit: 10),
+          stream: FirebaseSaleService.getRecentSales(vendorId: vendorId),
           builder: (context, snapshot) {
             // معالجة الأخطاء
             if (snapshot.hasError) {
-              print('❌ Error in recent sales stream: ${snapshot.error}');
               return AppCard(
                 padding: EdgeInsets.all(20.w),
-                child: Text(
-                  'خطأ في تحميل المبيعات: ${snapshot.error}',
-                  style: TextStyle(fontSize: 12.sp, color: AppColors.error),
-                  textAlign: TextAlign.center,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.error_outline, size: 40.w, color: AppColors.error),
+                    SizedBox(height: 12.h),
+                    Text(
+                      'خطأ في تحميل المبيعات',
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.error,
+                      ),
+                    ),
+                  ],
                 ),
               );
             }
 
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return Padding(
-                padding: EdgeInsets.all(16.w),
-                child: Column(
-                  children: List.generate(
-                    5,
-                    (index) => Padding(
-                      padding: EdgeInsets.only(bottom: 12.h),
-                      child: AppCard(
-                        padding: EdgeInsets.all(12.w),
-                        child: Row(
-                          children: [
-                            const SkeletonCircle(size: 40),
-                            SizedBox(width: 12.w),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const SkeletonLine(width: 150, height: 14),
-                                  SizedBox(height: 6.h),
-                                  const SkeletonLine(width: 100, height: 12),
-                                ],
-                              ),
+              return Column(
+                children: List.generate(
+                  5,
+                  (index) => Padding(
+                    padding: EdgeInsets.only(bottom: 12.h),
+                    child: AppCard(
+                      padding: EdgeInsets.all(16.w),
+                      child: Row(
+                        children: [
+                          const SkeletonCircle(size: 44),
+                          SizedBox(width: 12.w),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SkeletonLine(width: 150, height: 14),
+                                SizedBox(height: 6.h),
+                                const SkeletonLine(width: 100),
+                              ],
                             ),
-                            const SkeletonLine(width: 60, height: 16),
-                          ],
-                        ),
+                          ),
+                          const SkeletonLine(width: 60, height: 16),
+                        ],
                       ),
                     ),
                   ),
@@ -998,7 +1116,6 @@ class _RecentSalesSection extends StatelessWidget {
             }
 
             final sales = snapshot.data ?? [];
-            print('📋 Recent sales loaded: ${sales.length} sales');
 
             if (sales.isEmpty) {
               return AppCard(
@@ -1245,18 +1362,22 @@ class _SaleDetailsDialog extends StatelessWidget {
               backgroundColor: AppColors.blue50,
               child: Column(
                 children: [
-                  _InfoRow('الشبكة', sale.networkName),
+                  _infoRow('الشبكة', sale.networkName),
                   SizedBox(height: 8.h),
-                  _InfoRow('الوقت',
-                      DateFormat('yyyy/MM/dd - HH:mm').format(sale.soldAt)),
+                  _infoRow(
+                    'الوقت',
+                    DateFormat('yyyy/MM/dd - HH:mm').format(sale.soldAt),
+                  ),
                   SizedBox(height: 8.h),
-                  _InfoRow('إجمالي الكروت', '${sale.totalCards} كرت'),
+                  _infoRow('إجمالي الكروت', '${sale.totalCards} كرت'),
                   SizedBox(height: 8.h),
-                  _InfoRow('المبلغ الإجمالي',
-                      CurrencyFormatter.format(sale.totalAmount)),
+                  _infoRow(
+                    'المبلغ الإجمالي',
+                    CurrencyFormatter.format(sale.totalAmount),
+                  ),
                   if (sale.customerPhone != null) ...[
                     SizedBox(height: 8.h),
-                    _InfoRow('رقم العميل', sale.customerPhone!),
+                    _infoRow('رقم العميل', sale.customerPhone!),
                   ],
                 ],
               ),
@@ -1298,31 +1419,32 @@ class _SaleDetailsDialog extends StatelessWidget {
                           ),
                         ),
                         SizedBox(height: 8.h),
-                        ...cardNumbers.map((cardNumber) => Padding(
-                              padding: EdgeInsets.only(bottom: 4.h),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      cardNumber,
-                                      style: TextStyle(
-                                        fontSize: 12.sp,
-                                        color: AppColors.gray600,
-                                        fontFamily: 'monospace',
-                                      ),
+                        ...cardNumbers.map(
+                          (cardNumber) => Padding(
+                            padding: EdgeInsets.only(bottom: 4.h),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    cardNumber,
+                                    style: TextStyle(
+                                      fontSize: 12.sp,
+                                      color: AppColors.gray600,
+                                      fontFamily: 'monospace',
                                     ),
                                   ),
-                                  IconButton(
-                                    onPressed: () =>
-                                        _copyToClipboard(context, cardNumber),
-                                    icon: const Icon(Icons.copy),
-                                    iconSize: 16.w,
-                                    color: AppColors.gray500,
-                                    tooltip: 'نسخ',
-                                  ),
-                                ],
-                              ),
-                            )),
+                                ),
+                                IconButton(
+                                  onPressed: () => _copyToClipboard(context, cardNumber),
+                                  icon: const Icon(Icons.copy),
+                                  iconSize: 16.w,
+                                  color: AppColors.gray500,
+                                  tooltip: 'نسخ',
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   );
@@ -1365,7 +1487,7 @@ class _SaleDetailsDialog extends StatelessWidget {
     );
   }
 
-  Widget _InfoRow(String label, String value) {
+  Widget _infoRow(String label, String value) {
     return Row(
       children: [
         SizedBox(
@@ -1410,8 +1532,7 @@ class _SaleDetailsDialog extends StatelessWidget {
   }
 
   void _copyAllCards(BuildContext context) {
-    final allCards =
-        sale.packageCodes.values.expand((cards) => cards).join('\n');
+    final allCards = sale.packageCodes.values.expand((cards) => cards).join('\n');
     _copyToClipboard(context, allCards);
   }
 }

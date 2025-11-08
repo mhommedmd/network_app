@@ -29,7 +29,7 @@ class FirebaseVendorInventoryService {
       }
 
       return packageStock;
-    } catch (e) {
+    } on Exception {
       return {};
     }
   }
@@ -50,7 +50,7 @@ class FirebaseVendorInventoryService {
           .get();
 
       return snapshot.docs.length;
-    } catch (e) {
+    } on Exception {
       return 0;
     }
   }

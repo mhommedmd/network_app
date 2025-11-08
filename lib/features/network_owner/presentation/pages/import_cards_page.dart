@@ -22,6 +22,7 @@ import '../../data/models/card_model.dart';
 import '../../data/models/package_model.dart';
 import '../../data/providers/card_provider.dart';
 import '../../data/providers/package_provider.dart';
+import '../../data/services/firebase_card_service.dart';
 
 class ImportCardsPage extends StatefulWidget {
   const ImportCardsPage({
@@ -65,11 +66,9 @@ class _ImportCardsPageState extends State<ImportCardsPage> {
   final InventoryRepository _inventoryRepo = InventoryRepository.instance;
   List<PackageModel> _availablePackages = [];
 
-  final TextEditingController _cardDigitsController =
-      TextEditingController(text: '9');
+  final TextEditingController _cardDigitsController = TextEditingController(text: '9');
   final TextEditingController _cardsCountController = TextEditingController();
-  final TextEditingController _generationDigitsController =
-      TextEditingController(text: '9');
+  final TextEditingController _generationDigitsController = TextEditingController(text: '9');
   final TextEditingController _cardsPreviewController = TextEditingController();
 
   @override
@@ -83,12 +82,13 @@ class _ImportCardsPageState extends State<ImportCardsPage> {
 
   void _loadPackages() {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final packageProvider =
-        Provider.of<PackageProvider>(context, listen: false);
+    final packageProvider = Provider.of<PackageProvider>(context, listen: false);
+    final cardProvider = Provider.of<CardProvider>(context, listen: false);
     final networkId = authProvider.user?.id ?? '';
 
     if (networkId.isNotEmpty) {
       packageProvider.loadPackages(networkId);
+      cardProvider.loadCardsByStatus(networkId, CardStatus.available);
     }
   }
 
@@ -171,18 +171,48 @@ class _ImportCardsPageState extends State<ImportCardsPage> {
       return;
     }
 
+    // 1. فحص التكرار داخل الملف نفسه
     final duplicates = _findDuplicates(parsedCards);
     if (duplicates.isNotEmpty) {
+      final displayDuplicates = duplicates.take(5).join(', ');
+      final moreCount = duplicates.length > 5 ? ' و${duplicates.length - 5} أخرى' : '';
       _showError(
-        'تم العثور على أكواد مكررة داخل الملف: ${duplicates.join(', ')}',
+        'تم العثور على ${duplicates.length} كود مكرر داخل الملف:\n$displayDuplicates$moreCount',
       );
       return;
     }
 
+    // 2. فحص التعارض مع Firebase (الكروت المتاحة والمنقولة)
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    final firebaseConflicts = await _findConflictsWithFirebase(parsedCards);
+
+    if (!mounted) return;
+    Navigator.of(context).pop(); // إغلاق مؤشر التحميل
+
+    if (firebaseConflicts.isNotEmpty) {
+      final displayConflicts = firebaseConflicts.take(5).join(', ');
+      final moreCount = firebaseConflicts.length > 5 ? ' و${firebaseConflicts.length - 5} أخرى' : '';
+      _showError(
+        'تم العثور على ${firebaseConflicts.length} كود موجود مسبقاً في المخزون (متاح أو منقول):\n$displayConflicts$moreCount\n\n⚠️ لا يمكن استيراد كروت موجودة مسبقاً',
+      );
+      return;
+    }
+
+    // 3. فحص التعارض مع المخزون المحلي (إضافي)
     final inventoryConflicts = _findConflictsWithInventory(parsedCards);
     if (inventoryConflicts.isNotEmpty) {
+      final displayConflicts = inventoryConflicts.take(5).join(', ');
+      final moreCount = inventoryConflicts.length > 5 ? ' و${inventoryConflicts.length - 5} أخرى' : '';
       _showError(
-        'بعض الأكواد موجودة مسبقاً في المخزون: ${inventoryConflicts.join(', ')}',
+        'بعض الأكواد موجودة في المخزون المحلي:\n$displayConflicts$moreCount',
       );
       return;
     }
@@ -252,19 +282,7 @@ class _ImportCardsPageState extends State<ImportCardsPage> {
   }
 
   Future<Uint8List?> _resolveFileBytes(PlatformFile file) async {
-    if (file.bytes != null && file.bytes!.isNotEmpty) {
-      return file.bytes!;
-    }
-    final path = file.path;
-    if (path == null) {
-      return null;
-    }
-    try {
-      final bytes = await File(path).readAsBytes();
-      return bytes;
-    } on Exception {
-      return null;
-    }
+    return file.readBytes();
   }
 
   String _decodeString(Uint8List bytes) {
@@ -275,24 +293,23 @@ class _ImportCardsPageState extends State<ImportCardsPage> {
     try {
       final workbook = excel.Excel.decodeBytes(bytes);
       final buffer = StringBuffer();
+
       for (final sheetName in workbook.tables.keys) {
         final sheet = workbook.tables[sheetName];
         if (sheet == null) continue;
+
         for (final row in sheet.rows) {
           for (final cell in row) {
-            final value = cell?.value;
-            if (value == null) continue;
-            final text = value.toString().trim();
-            if (text.isEmpty) continue;
-            buffer.writeln(text);
+            final value = cell?.value?.toString().trim();
+            if (value != null && value.isNotEmpty) {
+              buffer.writeln(value);
+            }
           }
         }
       }
-      final content = buffer.toString();
-      if (content.trim().isEmpty) {
-        return <String>[];
-      }
-      return _parseCards(content, digits);
+
+      final content = buffer.toString().trim();
+      return content.isEmpty ? <String>[] : _parseCards(content, digits);
     } on Exception catch (_) {
       return <String>[];
     }
@@ -303,11 +320,8 @@ class _ImportCardsPageState extends State<ImportCardsPage> {
     try {
       document = PdfDocument(inputBytes: bytes);
       final extractor = PdfTextExtractor(document);
-      final text = extractor.extractText();
-      if (text.trim().isEmpty) {
-        return <String>[];
-      }
-      return _parseCards(text, digits);
+      final text = extractor.extractText().trim();
+      return text.isEmpty ? <String>[] : _parseCards(text, digits);
     } on Exception catch (_) {
       return <String>[];
     } finally {
@@ -338,18 +352,62 @@ class _ImportCardsPageState extends State<ImportCardsPage> {
       return;
     }
 
+    // 1. فحص التكرار داخل القائمة المحررة
     final duplicates = _findDuplicates(editedCards);
     if (duplicates.isNotEmpty) {
+      final displayDuplicates = duplicates.take(5).join(', ');
+      final moreCount = duplicates.length > 5 ? ' و${duplicates.length - 5} أخرى' : '';
       _showError(
-        'الكود/الأكواد التالية مكررة داخل الملف: ${duplicates.join(', ')}',
+        'تم العثور على ${duplicates.length} كود مكرر داخل القائمة:\n$displayDuplicates$moreCount',
       );
       return;
     }
 
+    // 2. فحص التعارض مع Firebase (الكروت المتاحة والمنقولة)
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            SizedBox(height: 16.h),
+            Text(
+              'جارٍ فحص التعارضات مع المخزون...',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 14.sp,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final firebaseConflicts = await _findConflictsWithFirebase(editedCards);
+
+    if (!mounted) return;
+    Navigator.of(context).pop(); // إغلاق مؤشر التحميل
+
+    if (firebaseConflicts.isNotEmpty) {
+      final displayConflicts = firebaseConflicts.take(5).join(', ');
+      final moreCount = firebaseConflicts.length > 5 ? ' و${firebaseConflicts.length - 5} أخرى' : '';
+      _showError(
+        'تم العثور على ${firebaseConflicts.length} كود موجود مسبقاً في المخزون (متاح أو منقول):\n$displayConflicts$moreCount\n\n⚠️ لا يمكن استيراد كروت موجودة مسبقاً',
+      );
+      return;
+    }
+
+    // 3. فحص التعارض مع المخزون المحلي (إضافي)
     final inventoryConflicts = _findConflictsWithInventory(editedCards);
     if (inventoryConflicts.isNotEmpty) {
+      final displayConflicts = inventoryConflicts.take(5).join(', ');
+      final moreCount = inventoryConflicts.length > 5 ? ' و${inventoryConflicts.length - 5} أخرى' : '';
       _showError(
-        'الكود/الأكواد التالية موجودة مسبقاً في المخزون: ${inventoryConflicts.join(', ')}',
+        'بعض الأكواد موجودة في المخزون المحلي:\n$displayConflicts$moreCount',
       );
       return;
     }
@@ -381,8 +439,7 @@ class _ImportCardsPageState extends State<ImportCardsPage> {
     // حفظ الكروت في Firebase
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final cardProvider = Provider.of<CardProvider>(context, listen: false);
-    final packageProvider =
-        Provider.of<PackageProvider>(context, listen: false);
+    final packageProvider = Provider.of<PackageProvider>(context, listen: false);
     final currentUser = authProvider.user;
 
     if (currentUser == null) {
@@ -444,13 +501,13 @@ class _ImportCardsPageState extends State<ImportCardsPage> {
 
       CustomToast.success(
         context,
-        'تم حفظ الكروت في Firebase وإضافتها للمخزون',
-        title: 'تم إضافة $addedCount كرت',
+        'تم اضافة $addedCount كرت الى المخزون بنجاح',
+        title: 'عملية ناجحة',
       );
 
       widget.onImportComplete(payload);
     } else {
-      _showError(cardProvider.error ?? 'فشل في حفظ الكروت في Firebase');
+      _showError(cardProvider.error ?? 'فشل في حفظ الكروت في المخزون');
     }
   }
 
@@ -655,9 +712,7 @@ class _ImportCardsPageState extends State<ImportCardsPage> {
             SizedBox(height: 20.h),
             AppButton(
               text: 'إضافة الكروت ($previewCount)',
-              onPressed: (_selectedPackageId != null && previewCount > 0)
-                  ? _handleImportCards
-                  : null,
+              onPressed: (_selectedPackageId != null && previewCount > 0) ? _handleImportCards : null,
               icon: Icon(
                 Icons.cloud_upload,
                 size: 20.w,
@@ -794,8 +849,7 @@ class _ImportCardsPageState extends State<ImportCardsPage> {
   }
 
   Widget _buildDirectGenerationTab() {
-    final hasPreview =
-        _cardsCountController.text.isNotEmpty && _generationPackageId != null;
+    final hasPreview = _cardsCountController.text.isNotEmpty && _generationPackageId != null;
     final digits = int.tryParse(_generationDigitsController.text);
 
     return SingleChildScrollView(
@@ -824,8 +878,7 @@ class _ImportCardsPageState extends State<ImportCardsPage> {
             ],
             SizedBox(height: 20.h),
             AppButton(
-              text:
-                  'توليد الكروت (${_cardsCountController.text.isEmpty ? '0' : _cardsCountController.text})',
+              text: 'توليد الكروت (${_cardsCountController.text.isEmpty ? '0' : _cardsCountController.text})',
               onPressed: (_generationPackageId != null &&
                       _cardsCountController.text.isNotEmpty &&
                       digits != null &&
@@ -850,9 +903,16 @@ class _ImportCardsPageState extends State<ImportCardsPage> {
     required ValueChanged<String?> onChanged,
   }) {
     final packageProvider = Provider.of<PackageProvider>(context);
+    final cardProvider = Provider.of<CardProvider>(context);
     _availablePackages = packageProvider.packages;
     final hasPackages = _availablePackages.isNotEmpty;
     final initialValue = hasPackages ? selectedValue : null;
+
+    final availableCounts = <String, int>{};
+    for (final card in cardProvider.cards) {
+      if (card.status != CardStatus.available) continue;
+      availableCounts.update(card.packageId, (value) => value + 1, ifAbsent: () => 1);
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -894,7 +954,7 @@ class _ImportCardsPageState extends State<ImportCardsPage> {
         else
           DropdownButtonFormField<String>(
             key: ValueKey<String?>(initialValue),
-            value: initialValue,
+            initialValue: initialValue,
             decoration: InputDecoration(
               hintText: 'اختر الباقة',
               filled: true,
@@ -907,7 +967,7 @@ class _ImportCardsPageState extends State<ImportCardsPage> {
                 .map(
                   (pkg) => DropdownMenuItem(
                     value: pkg.id,
-                    child: Text('${pkg.name} (${pkg.stock} كرت متاح)'),
+                    child: Text('${pkg.name} (${availableCounts[pkg.id] ?? 0} كرت متاح)'),
                   ),
                 )
                 .toList(),
@@ -1080,10 +1140,7 @@ class _ImportCardsPageState extends State<ImportCardsPage> {
 
   int get _currentDigits => int.tryParse(_cardDigitsController.text) ?? 0;
 
-  bool get _canPickFile =>
-      _selectedPackageId != null &&
-      _currentDigits > 0 &&
-      _availablePackages.isNotEmpty;
+  bool get _canPickFile => _selectedPackageId != null && _currentDigits > 0 && _availablePackages.isNotEmpty;
 
   String _formatCardsForEditor(List<String> cards) {
     if (cards.isEmpty) {
@@ -1091,9 +1148,7 @@ class _ImportCardsPageState extends State<ImportCardsPage> {
     }
     final columns = <List<String>>[];
     for (var i = 0; i < cards.length; i += _cardsPerColumn) {
-      final end = i + _cardsPerColumn < cards.length
-          ? i + _cardsPerColumn
-          : cards.length;
+      final end = i + _cardsPerColumn < cards.length ? i + _cardsPerColumn : cards.length;
       columns.add(cards.sublist(i, end));
     }
 
@@ -1123,77 +1178,66 @@ class _ImportCardsPageState extends State<ImportCardsPage> {
       _showError('عدد أرقام الكرت غير صالح');
       return null;
     }
+
     final lines = _cardsPreviewController.text.split(RegExp('[\r\n]+'));
     final collected = <String>[];
     final seen = <String>{};
+
     for (final rawLine in lines) {
       final trimmed = rawLine.trim();
-      if (trimmed.isEmpty) {
-        continue;
-      }
+      if (trimmed.isEmpty) continue;
+
       final tokens = _tokenizeEditorLine(trimmed);
       for (final token in tokens) {
-        if (token.isEmpty) {
-          continue;
-        }
+        if (token.isEmpty) continue;
+
         final sanitized = token.replaceAll(RegExp('[^a-zA-Z0-9]'), '');
+
+        // التحقق من طول الكود
         if (sanitized.length != digits) {
-          _showError(
-            'الكود "$token" يجب أن يحتوي على $digits محارف (أرقام أو حروف).',
-          );
+          _showError('الكود "$token" يجب أن يحتوي على $digits محارف');
           return null;
         }
+
+        // التحقق من التكرار
         if (!seen.add(sanitized)) {
-          _showError('الكود "$sanitized" مكرر داخل الملف.');
+          _showError('الكود "$sanitized" مكرر داخل القائمة');
           return null;
         }
+
         collected.add(sanitized);
+
+        // التحقق من الحد الأقصى
         if (collected.length > _maxCardsPerImport) {
-          _showError(
-            'يمكنك استيراد $_maxCardsPerImport كرت كحد أقصى في العملية الواحدة.',
-          );
+          _showError('الحد الأقصى $_maxCardsPerImport كرت في العملية الواحدة');
           return null;
         }
       }
     }
+
     if (collected.isEmpty) {
-      _showError('لا توجد أكواد صالحة في القائمة الحالية');
+      _showError('لا توجد أكواد صالحة في القائمة');
       return null;
     }
+
     return collected;
   }
 
   int _calculateEditorCardCount(int digits) {
-    if (digits <= 0) {
-      return 0;
-    }
-    final lines = _cardsPreviewController.text.split(RegExp('[\r\n]+'));
-    var count = 0;
-    for (final rawLine in lines) {
-      final trimmed = rawLine.trim();
-      if (trimmed.isEmpty) continue;
-      final tokens = _tokenizeEditorLine(trimmed);
-      for (final token in tokens) {
-        if (token.isEmpty) continue;
-        final sanitized = token.replaceAll(RegExp('[^a-zA-Z0-9]'), '');
-        if (sanitized.length == digits) {
-          count++;
-        }
-      }
-    }
-    return count;
+    if (digits <= 0) return 0;
+
+    return _cardsPreviewController.text
+        .split(RegExp('[\r\n]+'))
+        .where((line) => line.trim().isNotEmpty)
+        .expand((line) => _tokenizeEditorLine(line.trim()))
+        .where((token) => token.isNotEmpty)
+        .map((token) => token.replaceAll(RegExp('[^a-zA-Z0-9]'), ''))
+        .where((sanitized) => sanitized.length == digits)
+        .length;
   }
 
   List<String> _tokenizeEditorLine(String line) {
-    final parts = line.split(' ');
-    final tokens = <String>[];
-    for (final part in parts) {
-      final trimmed = part.trim();
-      if (trimmed.isNotEmpty) {
-        tokens.add(trimmed);
-      }
-    }
-    return tokens;
+    return line.split(' ').map((part) => part.trim()).where((part) => part.isNotEmpty).toList();
   }
 
   Set<String> _findDuplicates(List<String> codes) {
@@ -1217,5 +1261,62 @@ class _ImportCardsPageState extends State<ImportCardsPage> {
       }
     }
     return conflicts;
+  }
+
+  /// فحص الكروت المكررة في Firebase (المتاحة والمنقولة)
+  Future<Set<String>> _findConflictsWithFirebase(List<String> codes) async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final networkId = authProvider.user?.id ?? '';
+
+    if (networkId.isEmpty) {
+      return <String>{};
+    }
+
+    try {
+      final conflicts = <String>{};
+
+      // جلب جميع الكروت المتاحة والمنقولة من Firebase
+      final availableCards = await FirebaseCardService.getCardsByStatusOnce(
+        networkId,
+        CardStatus.available,
+      );
+      final transferredCards = await FirebaseCardService.getCardsByStatusOnce(
+        networkId,
+        CardStatus.transferred,
+      );
+
+      // إنشاء مجموعة من أرقام الكروت الموجودة
+      final existingCardNumbers = <String>{
+        ...availableCards.map((c) => c.cardNumber),
+        ...transferredCards.map((c) => c.cardNumber),
+      };
+
+      // فحص التعارضات
+      for (final code in codes) {
+        if (existingCardNumbers.contains(code)) {
+          conflicts.add(code);
+        }
+      }
+
+      return conflicts;
+    } on Exception {
+      // في حالة الخطأ، نستمر دون فحص Firebase (لتجنب منع الاستيراد)
+      return <String>{};
+    }
+  }
+}
+
+// Extension method لتبسيط عملية القراءة
+extension _PlatformFileExtension on PlatformFile {
+  Future<Uint8List?> readBytes() async {
+    if (bytes != null && bytes!.isNotEmpty) {
+      return bytes!;
+    }
+    if (path == null) return null;
+    try {
+      return await File(path!).readAsBytes();
+    } on Exception catch (_) {
+      return null;
+    }
   }
 }

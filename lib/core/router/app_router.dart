@@ -8,6 +8,7 @@ import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/auth/presentation/pages/register_page.dart';
 import '../../features/home/presentation/pages/main_layout.dart';
 import '../../features/pos_vendor/data/models/network_connection_model.dart';
+import '../../features/pos_vendor/presentation/pages/notifications_page.dart';
 import '../../features/pos_vendor/presentation/pages/sale_process_page.dart';
 import '../../features/pos_vendor/presentation/pages/send_order_page.dart';
 // Core / providers
@@ -21,7 +22,11 @@ class AppRouter {
       final isAuthenticated = authProvider.isAuthenticated;
 
       // قائمة الصفحات المسموح بها بدون تسجيل دخول
-      final publicRoutes = ['/login', '/register', '/forgot-password'];
+      final publicRoutes = [
+        '/login',
+        '/register',
+        '/forgot-password',
+      ];
 
       // If not authenticated and trying to access protected routes
       if (!isAuthenticated && !publicRoutes.contains(state.matchedLocation)) {
@@ -60,7 +65,6 @@ class AppRouter {
           return ForgotPasswordPage(initialPhone: initialPhone);
         },
       ),
-
       // Main Layout Route
       GoRoute(
         path: '/',
@@ -117,6 +121,11 @@ class AppRouter {
             networkName: networkName,
           );
         },
+      ),
+      GoRoute(
+        path: '/notifications',
+        name: 'notifications',
+        builder: (context, state) => const PosVendorNotificationsPage(),
       ),
     ],
     errorBuilder: (context, state) => Scaffold(

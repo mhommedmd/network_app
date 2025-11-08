@@ -24,7 +24,7 @@ class CacheManager {
 
       await prefs.setString(cacheKey, jsonEncode(cacheData));
       print('✅ Cache saved: $key');
-    } catch (e) {
+    } on Exception catch (e) {
       print('❌ Error saving cache: $e');
     }
   }
@@ -47,7 +47,7 @@ class CacheManager {
 
       await prefs.setString(cacheKey, jsonEncode(cacheData));
       print('✅ Cache list saved: $key (${dataList.length} items)');
-    } catch (e) {
+    } on Exception catch (e) {
       print('❌ Error saving cache list: $e');
     }
   }
@@ -78,9 +78,9 @@ class CacheManager {
       }
 
       print(
-          '✅ Cache hit: $key (${DateTime.now().difference(cachedTime).inMinutes} min old)');
+          '✅ Cache hit: $key (${DateTime.now().difference(cachedTime).inMinutes} min old)',);
       return cacheData['data'] as Map<String, dynamic>;
-    } catch (e) {
+    } on Exception catch (e) {
       print('❌ Error reading cache: $e');
       return null;
     }
@@ -116,9 +116,9 @@ class CacheManager {
           .toList();
 
       print(
-          '✅ Cache list hit: $key (${dataList.length} items, ${DateTime.now().difference(cachedTime).inMinutes} min old)');
+          '✅ Cache list hit: $key (${dataList.length} items, ${DateTime.now().difference(cachedTime).inMinutes} min old)',);
       return dataList;
-    } catch (e) {
+    } on Exception catch (e) {
       print('❌ Error reading cache list: $e');
       return null;
     }
@@ -131,7 +131,7 @@ class CacheManager {
       final cacheKey = _cachePrefix + key;
       await prefs.remove(cacheKey);
       print('🗑️ Cache cleared: $key');
-    } catch (e) {
+    } on Exception catch (e) {
       print('❌ Error clearing cache: $e');
     }
   }
@@ -148,7 +148,7 @@ class CacheManager {
       }
 
       print('🗑️ All cache cleared (${cacheKeys.length} items)');
-    } catch (e) {
+    } on Exception catch (e) {
       print('❌ Error clearing all cache: $e');
     }
   }
@@ -173,7 +173,7 @@ class CacheManager {
       final cachedTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
 
       return DateTime.now().difference(cachedTime).inMinutes;
-    } catch (e) {
+    } on Exception {
       return null;
     }
   }

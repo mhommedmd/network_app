@@ -1,8 +1,8 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 // Theme & shared UI
 import '../../../../core/providers/auth_provider.dart';
@@ -11,19 +11,22 @@ import '../../../../core/theme/ui_tokens.dart';
 import '../../../../shared/types/callbacks.dart';
 import '../../../../shared/widgets/app_card.dart';
 import '../../../../shared/widgets/skeleton/skeleton_loading.dart';
-import '../../../../shared/widgets/toast/toast.dart';
+import '../../data/models/order_model.dart';
 import '../../data/models/vendor_model.dart';
 import '../../data/providers/card_provider.dart';
+import '../../data/services/firebase_notification_service.dart';
+import '../../data/services/firebase_order_service.dart';
 import '../../data/services/firebase_transaction_service.dart';
 import '../../data/services/firebase_vendor_service.dart';
 import 'cash_payment_page.dart';
+import 'network_page.dart';
 import 'network_stored_page.dart';
 import 'notifications_page.dart';
+import 'statistics_page.dart';
 
 class NetworkOwnerHomePage extends StatelessWidget {
   const NetworkOwnerHomePage({
     super.key,
-    this.onViewOrderDetails,
     this.onAddPackage,
     this.onImportCards,
     this.onAddMerchant,
@@ -35,7 +38,6 @@ class NetworkOwnerHomePage extends StatelessWidget {
     this.ownerName,
     this.avatarUrl,
   });
-  final IntCallback? onViewOrderDetails;
   final VoidCallback? onAddPackage;
   final VoidCallback? onImportCards;
   final VoidCallback? onAddMerchant;
@@ -52,22 +54,17 @@ class NetworkOwnerHomePage extends StatelessWidget {
     if (url == null || url.isEmpty) return false;
     try {
       final uri = Uri.parse(url);
-      return uri.hasScheme &&
-          (uri.scheme == 'http' || uri.scheme == 'https') &&
-          uri.host.isNotEmpty;
-    } catch (e) {
+      return uri.hasScheme && (uri.scheme == 'http' || uri.scheme == 'https') && uri.host.isNotEmpty;
+    } on Exception {
       return false;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = context.watch<AuthProvider>();
-    final displayNetworkName = networkName ??
-        authProvider.user?.networkName ??
-        authProvider.user?.name ??
-        'شبكة افاق نت';
-    final displayOwnerName = ownerName ?? authProvider.user?.name ?? 'المالك';
+    final user = context.select((AuthProvider p) => p.user);
+    final displayNetworkName = networkName ?? user?.networkName ?? user?.name ?? 'شبكة افاق نت';
+    final displayOwnerName = ownerName ?? user?.name ?? 'المالك';
 
     final handleCashPayment = onRecordCashPayment ??
         () => Navigator.of(context).push(
@@ -77,10 +74,24 @@ class NetworkOwnerHomePage extends StatelessWidget {
                 ),
               ),
             );
+    final handleInventoryTap = onViewInventory ??
+        () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const NetworkStoredPage(),
+              ),
+            );
     final handleNotificationsTap = onNotificationsTap ??
         () => Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => const NotificationsPage(),
+                builder: (_) => NotificationsPage(
+                  onNavigate: (action, data) {
+                    // التنقل حسب نوع الإشعار
+                    Navigator.of(context).pop(); // إغلاق صفحة الإشعارات أولاً
+
+                    // حالياً: لا نقوم بأي تنقل إضافي
+                    // يمكن إضافة تنقل لصفحة محددة لاحقاً إذا لزم الأمر
+                  },
+                ),
               ),
             );
 
@@ -108,9 +119,7 @@ class NetworkOwnerHomePage extends StatelessWidget {
                   CircleAvatar(
                     radius: 24.w,
                     backgroundColor: Colors.white.withValues(alpha: 0.2),
-                    backgroundImage: _isValidUrl(avatarUrl)
-                        ? NetworkImage(avatarUrl!)
-                        : null,
+                    backgroundImage: _isValidUrl(avatarUrl) ? NetworkImage(avatarUrl!) : null,
                     child: !_isValidUrl(avatarUrl)
                         ? Icon(
                             Icons.person,
@@ -148,30 +157,51 @@ class NetworkOwnerHomePage extends StatelessWidget {
                       ],
                     ),
                   ),
-                  IconButton(
-                    onPressed: handleNotificationsTap,
-                    icon: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Icon(
-                          Icons.notifications_none,
-                          color: Colors.white,
-                          size: 26.w,
-                        ),
-                        Positioned(
-                          top: -2,
-                          right: -2,
-                          child: Container(
-                            width: 10.w,
-                            height: 10.w,
-                            decoration: const BoxDecoration(
-                              color: AppColors.errorLight,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ),
-                      ],
+                  StreamBuilder<int>(
+                    stream: FirebaseNotificationService.getUnreadCount(
+                      user?.id ?? '',
                     ),
+                    builder: (context, snapshot) {
+                      final unreadCount = snapshot.data ?? 0;
+                      return IconButton(
+                        onPressed: handleNotificationsTap,
+                        icon: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Icon(
+                              Icons.notifications_none,
+                              color: Colors.white,
+                              size: 26.w,
+                            ),
+                            if (unreadCount > 0)
+                              Positioned(
+                                top: -2,
+                                right: -2,
+                                child: Container(
+                                  padding: EdgeInsets.all(4.w),
+                                  decoration: const BoxDecoration(
+                                    color: AppColors.errorLight,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  constraints: BoxConstraints(
+                                    minWidth: 18.w,
+                                    minHeight: 18.w,
+                                  ),
+                                  child: Text(
+                                    '$unreadCount',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10.sp,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -189,16 +219,23 @@ class NetworkOwnerHomePage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _PrimaryStatsSection(onViewInventory: onViewInventory),
+                _PrimaryStatsSection(onViewInventory: handleInventoryTap),
                 SizedBox(height: 32.h),
                 _QuickActionsGrid(
                   onAddPackage: onAddPackage,
                   onImportCards: onImportCards,
                   onAddMerchant: onAddMerchant,
                   onRecordCashPayment: handleCashPayment,
+                  onViewOrders: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const NetworkOrdersPage(),
+                    ),
+                  ),
                 ),
                 SizedBox(height: 40.h),
-                _QuickAccessVendors(),
+                _RecentOrdersSection(),
+                SizedBox(height: 40.h),
+                _MostActiveVendorsSection(),
               ],
             ),
           ),
@@ -215,11 +252,13 @@ class _QuickActionsGrid extends StatelessWidget {
     this.onImportCards,
     this.onAddMerchant,
     this.onRecordCashPayment,
+    this.onViewOrders,
   });
   final VoidCallback? onAddPackage;
   final VoidCallback? onImportCards;
   final VoidCallback? onAddMerchant;
   final VoidCallback? onRecordCashPayment;
+  final VoidCallback? onViewOrders;
 
   @override
   Widget build(BuildContext context) {
@@ -230,23 +269,20 @@ class _QuickActionsGrid extends StatelessWidget {
           label: 'دفعة نقدية',
           onTap: onRecordCashPayment!,
         ),
-      if (onAddPackage != null)
-        _ActionData(
-          icon: Icons.add_box_outlined,
-          label: 'إضافة باقة',
-          onTap: onAddPackage!,
+      _ActionData(
+        icon: Icons.bar_chart_outlined,
+        label: 'الإحصائيات',
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => const StatisticsPage(),
+          ),
         ),
-      if (onImportCards != null)
+      ),
+      if (onViewOrders != null)
         _ActionData(
-          icon: Icons.sim_card_download_outlined,
-          label: 'استيراد كروت',
-          onTap: onImportCards!,
-        ),
-      if (onAddMerchant != null)
-        _ActionData(
-          icon: Icons.store_mall_directory_outlined,
-          label: 'إضافة متجر',
-          onTap: onAddMerchant!,
+          icon: Icons.receipt_long_outlined,
+          label: 'الطلبات',
+          onTap: onViewOrders!,
         ),
     ];
     if (items.isEmpty) return const SizedBox.shrink();
@@ -350,8 +386,7 @@ class _PrimaryStatsSectionState extends State<_PrimaryStatsSection> {
       await cardProvider.loadStats(networkId);
 
       // حساب إجمالي المبيعات من المعاملات
-      final salesData =
-          await FirebaseTransactionService.getTotalSales(networkId);
+      final salesData = await FirebaseTransactionService.getTotalSales(networkId);
 
       if (mounted) {
         final stats = cardProvider.stats;
@@ -368,7 +403,7 @@ class _PrimaryStatsSectionState extends State<_PrimaryStatsSection> {
           }
         });
       }
-    } catch (e) {
+    } on Exception {
       if (mounted) {
         setState(() => _isLoading = false);
       }
@@ -394,7 +429,7 @@ class _PrimaryStatsSectionState extends State<_PrimaryStatsSection> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SkeletonLine(width: 100, height: 12),
+                  const SkeletonLine(width: 100),
                   SizedBox(height: 6.h),
                   const SkeletonLine(width: 150, height: 16),
                 ],
@@ -409,7 +444,7 @@ class _PrimaryStatsSectionState extends State<_PrimaryStatsSection> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SkeletonLine(width: 100, height: 12),
+                  const SkeletonLine(width: 100),
                   SizedBox(height: 6.h),
                   const SkeletonLine(width: 150, height: 16),
                 ],
@@ -425,7 +460,7 @@ class _PrimaryStatsSectionState extends State<_PrimaryStatsSection> {
         Expanded(
           child: _StatCard(
             data: _StatData(
-              title: 'إجمالي المبيعات',
+              title: 'إجمالي الإيرادات',
               value: '${NumberFormat('#,###', 'ar').format(_totalSales)} ر.ي',
               valueColor: AppColors.success,
             ),
@@ -496,138 +531,85 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-/// قسم المتاجر المفضلة للوصول السريع
-class _QuickAccessVendors extends StatefulWidget {
+/// قسم الطلبات الأخيرة
+class _RecentOrdersSection extends StatefulWidget {
   @override
-  State<_QuickAccessVendors> createState() => _QuickAccessVendorsState();
+  State<_RecentOrdersSection> createState() => _RecentOrdersSectionState();
 }
 
-class _QuickAccessVendorsState extends State<_QuickAccessVendors> {
-  List<String?> _customVendorIds = [null, null, null]; // 3 slots
-  List<VendorModel> _vendors = [];
+class _RecentOrdersSectionState extends State<_RecentOrdersSection> {
+  List<OrderModel> _orders = [];
+  Map<String, VendorModel> _vendorsMap = {};
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadCustomVendors();
-    _loadVendorsList();
-  }
-
-  Future<void> _loadCustomVendors() async {
-    final prefs = await SharedPreferences.getInstance();
-    final authProvider = context.read<AuthProvider>();
-    final networkId = authProvider.user?.id ?? '';
-
-    setState(() {
-      _customVendorIds = [
-        prefs.getString('custom_vendor_0_$networkId'),
-        prefs.getString('custom_vendor_1_$networkId'),
-        prefs.getString('custom_vendor_2_$networkId'),
-      ];
+    // استخدام addPostFrameCallback لتجنب setState أثناء البناء
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadOrders();
+      }
     });
   }
 
-  void _loadVendorsList() {
+  void _loadOrders() {
     final authProvider = context.read<AuthProvider>();
     final networkId = authProvider.user?.id ?? '';
 
-    if (networkId.isEmpty) return;
+    if (networkId.isEmpty) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+      return;
+    }
 
+    // تحميل المتاجر أولاً
     FirebaseVendorService.getVendorsByNetwork(networkId).listen(
       (vendors) {
         if (mounted) {
           setState(() {
-            _vendors = vendors;
+            // استخدام realUserId كمفتاح لأن order.vendorId يحتوي على userId الحقيقي
+            _vendorsMap = {for (final v in vendors) v.realUserId: v};
           });
         }
       },
-      onError: (Object error) {
-        // تسجيل الخطأ فقط
-        print('❌ Error loading vendors: $error');
+      onError: (error) {
+        // معالجة الخطأ بصمت
+        if (mounted) {
+          setState(() => _vendorsMap = {});
+        }
+      },
+    );
+
+    // تحميل الطلبات
+    FirebaseOrderService.getNetworkOrders(networkId).listen(
+      (orders) {
+        if (mounted) {
+          setState(() {
+            // أخذ آخر 5 طلبات فقط
+            _orders = orders.take(5).toList();
+            _isLoading = false;
+          });
+        }
+      },
+      onError: (error) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _orders = [];
+          });
+        }
       },
     );
   }
 
-  Future<void> _selectVendor(int slotIndex) async {
-    final authProvider = context.read<AuthProvider>();
-    final networkId = authProvider.user?.id ?? '';
-
-    if (networkId.isEmpty) return;
-
-    if (_vendors.isEmpty) {
-      if (!mounted) return;
-      CustomToast.warning(
-        context,
-        'قم بإضافة متاجر من صفحة المتاجر أولاً',
-        title: 'لا توجد متاجر',
-      );
-      return;
-    }
-
-    // عرض قائمة المتاجر للاختيار
-    final selectedVendor = await showDialog<VendorModel>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('اختر متجر'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: _vendors.length,
-            itemBuilder: (context, index) {
-              final vendor = _vendors[index];
-              return ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: AppColors.blue100,
-                  child: Text(
-                    vendor.avatar,
-                    style: TextStyle(
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18.sp,
-                    ),
-                  ),
-                ),
-                title: Text(vendor.name),
-                subtitle: Text(
-                  '${vendor.ownerName} • ${vendor.stock} كرت',
-                  style: TextStyle(fontSize: 12.sp),
-                ),
-                onTap: () => Navigator.pop(context, vendor),
-              );
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('إلغاء'),
-          ),
-        ],
+  void _navigateToOrdersPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const NetworkOrdersPage(),
       ),
     );
-
-    if (selectedVendor != null) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-          'custom_vendor_${slotIndex}_$networkId', selectedVendor.id);
-
-      setState(() {
-        _customVendorIds[slotIndex] = selectedVendor.id;
-      });
-    }
-  }
-
-  Future<void> _removeVendor(int slotIndex) async {
-    final authProvider = context.read<AuthProvider>();
-    final networkId = authProvider.user?.id ?? '';
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('custom_vendor_${slotIndex}_$networkId');
-
-    setState(() {
-      _customVendorIds[slotIndex] = null;
-    });
   }
 
   @override
@@ -636,129 +618,315 @@ class _QuickAccessVendorsState extends State<_QuickAccessVendors> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Icon(
-              Icons.star_rounded,
-              color: AppColors.warning,
-              size: 22.r,
+            Row(
+              children: [
+                Icon(
+                  Icons.receipt_long_outlined,
+                  color: AppColors.primary,
+                  size: 22.r,
+                ),
+                SizedBox(width: 8.w),
+                Text(
+                  'الطلبات الأخيرة',
+                  style: AppTypography.subheadline.copyWith(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.gray800,
+                  ),
+                ),
+              ],
             ),
-            SizedBox(width: 8.w),
-            Text(
-              'المتاجر المفضلة',
-              style: AppTypography.subheadline.copyWith(
-                fontSize: 16.sp,
-                fontWeight: FontWeight.w700,
-                color: AppColors.gray800,
+            if (_orders.isNotEmpty)
+              TextButton(
+                onPressed: _navigateToOrdersPage,
+                child: Text(
+                  'عرض الكل',
+                  style: TextStyle(
+                    fontSize: 13.sp,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary,
+                  ),
+                ),
               ),
-            ),
           ],
         ),
         SizedBox(height: 16.h),
 
-        // 3 أزرار تخصيص
-        ...List.generate(3, (index) {
-          final vendorId = _customVendorIds[index];
-          final vendor = vendorId != null
-              ? _vendors.firstWhere(
-                  (v) => v.id == vendorId,
-                  orElse: () => VendorModel(
-                    id: '',
-                    name: '',
-                    ownerName: '',
-                    phone: '',
-                    governorate: '',
-                    district: '',
-                    address: '',
-                    networkId: '',
-                    balance: 0,
-                    stock: 0,
-                    isActive: true,
-                    createdAt: DateTime.now(),
+        // عرض Skeleton أثناء التحميل
+        if (_isLoading)
+          ...List.generate(
+            3,
+            (index) => Padding(
+              padding: EdgeInsets.only(bottom: 12.h),
+              child: AppCard(
+                padding: EdgeInsets.all(16.w),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const SkeletonBox(width: 40, height: 40, borderRadius: 12),
+                        SizedBox(width: 12.w),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SkeletonLine(width: 120, height: 14),
+                              SizedBox(height: 6.h),
+                              const SkeletonLine(width: 80),
+                            ],
+                          ),
+                        ),
+                        const SkeletonBox(width: 60, height: 24, borderRadius: 8),
+                      ],
+                    ),
+                    SizedBox(height: 12.h),
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        SkeletonLine(width: 80),
+                        SkeletonLine(width: 100),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          )
+        // عرض الطلبات
+        else if (_orders.isEmpty)
+          AppCard(
+            padding: EdgeInsets.all(24.w),
+            child: Center(
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.inbox_outlined,
+                    size: 48.r,
+                    color: AppColors.gray400,
                   ),
-                )
-              : null;
-
-          return Padding(
-            padding: EdgeInsets.only(bottom: 12.h),
-            child: vendor != null && vendor.id.isNotEmpty
-                ? _CustomVendorCard(
-                    vendor: vendor,
-                    onRemove: () => _removeVendor(index),
-                  )
-                : _CustomizeButton(
-                    slotNumber: index + 1,
-                    onTap: () => _selectVendor(index),
+                  SizedBox(height: 12.h),
+                  Text(
+                    'لا توجد طلبات حالياً',
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      color: AppColors.gray600,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-          );
-        }),
+                ],
+              ),
+            ),
+          )
+        else
+          ..._orders.map((order) {
+            final vendor = _vendorsMap[order.vendorId];
+            return Padding(
+              padding: EdgeInsets.only(bottom: 12.h),
+              child: _OrderCard(
+                order: order,
+                vendor: vendor,
+                onTap: _navigateToOrdersPage,
+              ),
+            );
+          }),
       ],
     );
   }
 }
 
-/// زر التخصيص
-class _CustomizeButton extends StatelessWidget {
-  const _CustomizeButton({
-    required this.slotNumber,
+/// بطاقة الطلب المختصرة
+class _OrderCard extends StatelessWidget {
+  const _OrderCard({
+    required this.order,
+    required this.vendor,
     required this.onTap,
   });
 
-  final int slotNumber;
+  final OrderModel order;
+  final VendorModel? vendor;
   final VoidCallback onTap;
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'pending':
+        return AppColors.warning;
+      case 'approved':
+        return AppColors.success;
+      case 'rejected':
+        return AppColors.error;
+      default:
+        return AppColors.gray500;
+    }
+  }
+
+  String _getStatusText(String status) {
+    switch (status) {
+      case 'pending':
+        return 'قيد الانتظار';
+      case 'approved':
+        return 'تمت الموافقة';
+      case 'rejected':
+        return 'مرفوض';
+      default:
+        return status;
+    }
+  }
+
+  IconData _getStatusIcon(String status) {
+    switch (status) {
+      case 'pending':
+        return Icons.schedule;
+      case 'approved':
+        return Icons.check_circle;
+      case 'rejected':
+        return Icons.cancel;
+      default:
+        return Icons.help_outline;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final statusColor = _getStatusColor(order.status);
+    final statusText = _getStatusText(order.status);
+    final statusIcon = _getStatusIcon(order.status);
+
     return AppCard(
       onTap: onTap,
       padding: EdgeInsets.all(16.w),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 50.w,
-            height: 50.w,
-            decoration: BoxDecoration(
-              color: AppColors.gray100,
-              borderRadius: BorderRadius.circular(12.r),
-              border: Border.all(
-                color: AppColors.gray300,
-                width: 2,
-                style: BorderStyle.solid,
-              ),
-            ),
-            child: Icon(
-              Icons.add,
-              color: AppColors.gray500,
-              size: 24.w,
-            ),
-          ),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'تخصيص $slotNumber',
-                  style: TextStyle(
-                    fontSize: 15.sp,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.gray700,
-                  ),
+          Row(
+            children: [
+              // أيقونة المتجر
+              Container(
+                width: 40.w,
+                height: 40.w,
+                decoration: BoxDecoration(
+                  color: AppColors.blue100,
+                  borderRadius: BorderRadius.circular(12.r),
                 ),
-                SizedBox(height: 4.h),
-                Text(
-                  'اضغط لاختيار باقة',
-                  style: TextStyle(
-                    fontSize: 12.sp,
+                child: vendor != null
+                    ? Center(
+                        child: Text(
+                          vendor!.avatar,
+                          style: TextStyle(
+                            fontSize: 18.sp,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      )
+                    : Icon(
+                        Icons.store,
+                        color: AppColors.primary,
+                        size: 20.w,
+                      ),
+              ),
+              SizedBox(width: 12.w),
+              // اسم المتجر
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      vendor?.name ?? 'متجر غير معروف',
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.gray900,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    SizedBox(height: 2.h),
+                    Text(
+                      DateFormat('dd/MM/yyyy', 'ar').format(order.createdAt),
+                      style: TextStyle(
+                        fontSize: 11.sp,
+                        color: AppColors.gray500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // حالة الطلب
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8.r),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      statusIcon,
+                      size: 14.w,
+                      color: statusColor,
+                    ),
+                    SizedBox(width: 4.w),
+                    Text(
+                      statusText,
+                      style: TextStyle(
+                        fontSize: 11.sp,
+                        fontWeight: FontWeight.w600,
+                        color: statusColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 12.h),
+          // تفاصيل الطلب
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // عدد الكروت
+              Row(
+                children: [
+                  Icon(
+                    Icons.confirmation_number_outlined,
+                    size: 14.w,
                     color: AppColors.gray500,
                   ),
-                ),
-              ],
-            ),
-          ),
-          Icon(
-            Icons.arrow_forward_ios,
-            size: 16.w,
-            color: AppColors.gray400,
+                  SizedBox(width: 4.w),
+                  Text(
+                    '${order.totalCards} كرت',
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.gray700,
+                    ),
+                  ),
+                ],
+              ),
+              // القيمة الإجمالية
+              Row(
+                children: [
+                  Icon(
+                    Icons.payments_outlined,
+                    size: 14.w,
+                    color: AppColors.gray500,
+                  ),
+                  SizedBox(width: 4.w),
+                  Text(
+                    '${NumberFormat('#,###', 'ar').format(order.totalAmount)} ر.ي',
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ],
       ),
@@ -766,58 +934,294 @@ class _CustomizeButton extends StatelessWidget {
   }
 }
 
-/// بطاقة المتجر المخصص
-class _CustomVendorCard extends StatelessWidget {
-  const _CustomVendorCard({
+/// قسم المتاجر الأكثر نشاطاً
+class _MostActiveVendorsSection extends StatefulWidget {
+  @override
+  State<_MostActiveVendorsSection> createState() => _MostActiveVendorsSectionState();
+}
+
+class _MostActiveVendorsSectionState extends State<_MostActiveVendorsSection> {
+  List<Map<String, dynamic>> _topVendors = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadTopVendors();
+      }
+    });
+  }
+
+  Future<void> _loadTopVendors() async {
+    final authProvider = context.read<AuthProvider>();
+    final networkId = authProvider.user?.id ?? '';
+
+    if (networkId.isEmpty) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+      return;
+    }
+
+    try {
+      final firestore = FirebaseFirestore.instance;
+
+      // جلب جميع المتاجر
+      final vendorsSnapshot = await FirebaseVendorService.getVendorsByNetwork(networkId).first;
+
+      // حساب النشاط لكل متجر (عدد الطلبات + عدد الدفعات)
+      final vendorActivities = <Map<String, dynamic>>[];
+
+      for (final vendor in vendorsSnapshot) {
+        // عدد الطلبات
+        final ordersSnapshot = await firestore
+            .collection('orders')
+            .where('vendorId', isEqualTo: vendor.realUserId)
+            .where('networkId', isEqualTo: networkId)
+            .get();
+
+        // عدد الدفعات
+        final paymentsSnapshot = await firestore
+            .collection('cash_payment_requests')
+            .where('vendorId', isEqualTo: vendor.realUserId)
+            .where('networkId', isEqualTo: networkId)
+            .get();
+
+        final totalActivity = ordersSnapshot.docs.length + paymentsSnapshot.docs.length;
+
+        // حساب الرصيد من transactions
+        final transactionsSnapshot = await firestore
+            .collection('transactions')
+            .where('vendorId', isEqualTo: vendor.realUserId)
+            .where('networkId', isEqualTo: networkId)
+            .where('status', isEqualTo: 'completed')
+            .get();
+
+        double balance = 0;
+        for (final doc in transactionsSnapshot.docs) {
+          final data = doc.data();
+          final amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
+          final type = data['type'] as String?;
+
+          if (type == 'cash_payment_received') {
+            balance -= amount.abs();
+          } else if (amount > 0) {
+            balance += amount;
+          } else if (amount < 0) {
+            balance += amount;
+          }
+        }
+
+        // حساب المخزون
+        final cardsSnapshot = await firestore
+            .collection('vendor_cards')
+            .where('vendorId', isEqualTo: vendor.realUserId)
+            .where('networkId', isEqualTo: networkId)
+            .where('status', isEqualTo: 'available')
+            .get();
+
+        vendorActivities.add({
+          'vendor': vendor,
+          'activity': totalActivity,
+          'ordersCount': ordersSnapshot.docs.length,
+          'paymentsCount': paymentsSnapshot.docs.length,
+          'balance': balance,
+          'stock': cardsSnapshot.docs.length,
+        });
+      }
+
+      // ترتيب حسب النشاط (الأكثر نشاطاً أولاً)
+      vendorActivities.sort((a, b) => (b['activity'] as int).compareTo(a['activity'] as int));
+
+      // أخذ أول 3 متاجر فقط
+      final top3 = vendorActivities.take(3).toList();
+
+      if (mounted) {
+        setState(() {
+          _topVendors = top3;
+          _isLoading = false;
+        });
+      }
+    } on Exception {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.trending_up,
+                  color: AppColors.primary,
+                  size: 22.r,
+                ),
+                SizedBox(width: 8.w),
+                Text(
+                  'المتاجر الأكثر نشاطاً',
+                  style: AppTypography.subheadline.copyWith(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.gray800,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        SizedBox(height: 16.h),
+        if (_isLoading)
+          ...List.generate(
+            3,
+            (index) => Padding(
+              padding: EdgeInsets.only(bottom: 12.h),
+              child: AppCard(
+                padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+                child: Row(
+                  children: [
+                    const SkeletonBox(width: 46, height: 46, borderRadius: 12),
+                    SizedBox(width: 12.w),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SkeletonLine(width: 120, height: 14),
+                          SizedBox(height: 6.h),
+                          const SkeletonLine(width: 80),
+                        ],
+                      ),
+                    ),
+                    const SkeletonBox(width: 60, height: 30, borderRadius: 8),
+                  ],
+                ),
+              ),
+            ),
+          )
+        else if (_topVendors.isEmpty)
+          AppCard(
+            padding: EdgeInsets.all(24.w),
+            child: Center(
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.store_outlined,
+                    size: 48.r,
+                    color: AppColors.gray400,
+                  ),
+                  SizedBox(height: 12.h),
+                  Text(
+                    'لا توجد متاجر نشطة',
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      color: AppColors.gray600,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          ..._topVendors.map((vendorData) {
+            final vendor = vendorData['vendor'] as VendorModel;
+            final balance = vendorData['balance'] as double;
+            final stock = vendorData['stock'] as int;
+
+            return Padding(
+              padding: EdgeInsets.only(bottom: 12.h),
+              child: _ActiveVendorTile(
+                vendor: vendor,
+                balance: balance,
+                stock: stock,
+              ),
+            );
+          }),
+      ],
+    );
+  }
+}
+
+/// بطاقة عرض المتجر النشط (نفس التصميم من accounts_page)
+class _ActiveVendorTile extends StatelessWidget {
+  const _ActiveVendorTile({
     required this.vendor,
-    required this.onRemove,
+    required this.balance,
+    required this.stock,
   });
 
   final VendorModel vendor;
-  final VoidCallback onRemove;
+  final double balance;
+  final int stock;
 
   @override
   Widget build(BuildContext context) {
     return AppCard(
-      padding: EdgeInsets.all(16.w),
+      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 25.w,
-            backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-            child: Text(
-              vendor.avatar,
-              style: TextStyle(
-                fontSize: 20.sp,
-                fontWeight: FontWeight.bold,
-                color: AppColors.primary,
+          // الأفاتار
+          Container(
+            width: 46.w,
+            height: 46.w,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppColors.primary,
+                  AppColors.primaryDark,
+                ],
+              ),
+              borderRadius: BorderRadius.circular(12.r),
+            ),
+            child: Center(
+              child: Text(
+                vendor.avatar,
+                style: TextStyle(
+                  fontSize: 18.sp,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),
           SizedBox(width: 12.w),
+          // معلومات المتجر
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   vendor.name,
                   style: TextStyle(
-                    fontSize: 15.sp,
+                    fontSize: 14.sp,
                     fontWeight: FontWeight.w700,
                     color: AppColors.gray900,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                SizedBox(height: 4.h),
+                SizedBox(height: 3.h),
                 Row(
                   children: [
-                    Icon(Icons.person_outline,
-                        size: 14.w, color: AppColors.gray500),
-                    SizedBox(width: 4.w),
+                    Icon(Icons.person_outline, size: 12.w, color: AppColors.gray500),
+                    SizedBox(width: 3.w),
                     Expanded(
                       child: Text(
                         vendor.ownerName,
                         style: TextStyle(
-                          fontSize: 12.sp,
+                          fontSize: 11.sp,
                           color: AppColors.gray600,
                         ),
                         maxLines: 1,
@@ -826,34 +1230,28 @@ class _CustomVendorCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                SizedBox(height: 4.h),
+                SizedBox(height: 2.h),
                 Row(
                   children: [
-                    Icon(Icons.inventory_2,
-                        size: 14.w, color: AppColors.gray500),
-                    SizedBox(width: 4.w),
+                    Icon(Icons.phone, size: 11.w, color: AppColors.gray500),
+                    SizedBox(width: 3.w),
                     Text(
-                      '${vendor.stock} كرت',
-                      style: TextStyle(
-                        fontSize: 12.sp,
-                        color: vendor.stock > 10
-                            ? AppColors.success
-                            : AppColors.warning,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      vendor.phone,
+                      style: TextStyle(fontSize: 10.sp, color: AppColors.gray600),
                     ),
-                    SizedBox(width: 12.w),
-                    Icon(Icons.account_balance_wallet,
-                        size: 14.w, color: AppColors.gray500),
-                    SizedBox(width: 4.w),
-                    Text(
-                      '${vendor.balance.toStringAsFixed(0)} ر.ي',
-                      style: TextStyle(
-                        fontSize: 12.sp,
-                        color: vendor.balance < 0
-                            ? AppColors.errorDark
-                            : AppColors.gray600,
-                        fontWeight: FontWeight.w600,
+                  ],
+                ),
+                SizedBox(height: 2.h),
+                Row(
+                  children: [
+                    Icon(Icons.location_on, size: 11.w, color: AppColors.gray500),
+                    SizedBox(width: 3.w),
+                    Expanded(
+                      child: Text(
+                        '${vendor.governorate}${vendor.district.isNotEmpty ? ' - ${vendor.district}' : ''}${vendor.address.isNotEmpty ? ' - ${vendor.address}' : ''}',
+                        style: TextStyle(fontSize: 10.sp, color: AppColors.gray600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
@@ -861,12 +1259,47 @@ class _CustomVendorCard extends StatelessWidget {
               ],
             ),
           ),
-          IconButton(
-            onPressed: onRemove,
-            icon: const Icon(Icons.close),
-            iconSize: 20.w,
-            color: AppColors.gray500,
-            tooltip: 'إزالة',
+          SizedBox(width: 10.w),
+          // الإحصائيات
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // الرصيد
+              Text(
+                '${balance >= 0 ? '+' : ''}${balance.toStringAsFixed(0)}',
+                style: TextStyle(
+                  fontSize: 15.sp,
+                  fontWeight: FontWeight.w800,
+                  color: balance > 0 ? AppColors.error : AppColors.success,
+                ),
+              ),
+              Text(
+                'ر.ي',
+                style: TextStyle(
+                  fontSize: 9.sp,
+                  color: AppColors.gray500,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              SizedBox(height: 4.h),
+              // المخزون
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+                decoration: BoxDecoration(
+                  color: AppColors.blue100,
+                  borderRadius: BorderRadius.circular(8.r),
+                ),
+                child: Text(
+                  '$stock كرت',
+                  style: TextStyle(
+                    fontSize: 9.sp,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.blue700,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),

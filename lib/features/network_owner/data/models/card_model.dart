@@ -10,24 +10,6 @@ enum CardStatus {
 }
 
 class CardModel {
-  final String id;
-  final String cardNumber;
-  final String pin;
-  final String packageId;
-  final String packageName;
-  final double price;
-  final DateTime expiryDate;
-  final CardStatus status;
-  final String? soldTo;
-  final DateTime? soldAt;
-  final String? usedBy;
-  final DateTime? usedAt;
-  final String networkId;
-  final String createdBy;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-  final String? notes;
-
   CardModel({
     required this.id,
     required this.cardNumber,
@@ -37,19 +19,22 @@ class CardModel {
     required this.price,
     required this.expiryDate,
     required this.status,
-    this.soldTo,
-    this.soldAt,
-    this.usedBy,
-    this.usedAt,
     required this.networkId,
     required this.createdBy,
     required this.createdAt,
     required this.updatedAt,
+    this.soldTo,
+    this.soldAt,
+    this.usedBy,
+    this.usedAt,
+    this.transferredTo,
+    this.transferredAt,
+    this.orderId,
     this.notes,
   });
 
   factory CardModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = doc.data()! as Map<String, dynamic>;
     return CardModel(
       id: doc.id,
       cardNumber: data['cardNumber']?.toString() ?? '',
@@ -63,13 +48,12 @@ class CardModel {
         orElse: () => CardStatus.available,
       ),
       soldTo: data['soldTo']?.toString(),
-      soldAt: data['soldAt'] != null
-          ? (data['soldAt'] as Timestamp).toDate()
-          : null,
+      soldAt: data['soldAt'] != null ? (data['soldAt'] as Timestamp).toDate() : null,
       usedBy: data['usedBy']?.toString(),
-      usedAt: data['usedAt'] != null
-          ? (data['usedAt'] as Timestamp).toDate()
-          : null,
+      usedAt: data['usedAt'] != null ? (data['usedAt'] as Timestamp).toDate() : null,
+      transferredTo: data['transferredTo']?.toString(),
+      transferredAt: data['transferredAt'] != null ? (data['transferredAt'] as Timestamp).toDate() : null,
+      orderId: data['orderId']?.toString(),
       networkId: data['networkId']?.toString() ?? '',
       createdBy: data['createdBy']?.toString() ?? '',
       createdAt: (data['createdAt'] as Timestamp).toDate(),
@@ -77,6 +61,26 @@ class CardModel {
       notes: data['notes']?.toString(),
     );
   }
+  final String id;
+  final String cardNumber;
+  final String pin;
+  final String packageId;
+  final String packageName;
+  final double price;
+  final DateTime expiryDate;
+  final CardStatus status;
+  final String? soldTo;
+  final DateTime? soldAt;
+  final String? usedBy;
+  final DateTime? usedAt;
+  final String? transferredTo;
+  final DateTime? transferredAt;
+  final String? orderId;
+  final String networkId;
+  final String createdBy;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final String? notes;
 
   Map<String, dynamic> toFirestore() {
     return {
@@ -91,10 +95,13 @@ class CardModel {
       'soldAt': soldAt != null ? Timestamp.fromDate(soldAt!) : null,
       'usedBy': usedBy,
       'usedAt': usedAt != null ? Timestamp.fromDate(usedAt!) : null,
+      'transferredTo': transferredTo,
+      'transferredAt': transferredAt != null ? Timestamp.fromDate(transferredAt!) : null,
       'networkId': networkId,
       'createdBy': createdBy,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
+      'orderId': orderId,
       'notes': notes,
     };
   }
@@ -112,6 +119,9 @@ class CardModel {
     DateTime? soldAt,
     String? usedBy,
     DateTime? usedAt,
+    String? transferredTo,
+    DateTime? transferredAt,
+    String? orderId,
     String? networkId,
     String? createdBy,
     DateTime? createdAt,
@@ -131,6 +141,9 @@ class CardModel {
       soldAt: soldAt ?? this.soldAt,
       usedBy: usedBy ?? this.usedBy,
       usedAt: usedAt ?? this.usedAt,
+      transferredTo: transferredTo ?? this.transferredTo,
+      transferredAt: transferredAt ?? this.transferredAt,
+      orderId: orderId ?? this.orderId,
       networkId: networkId ?? this.networkId,
       createdBy: createdBy ?? this.createdBy,
       createdAt: createdAt ?? this.createdAt,

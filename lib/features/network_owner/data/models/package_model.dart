@@ -1,26 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class PackageModel {
-  final String id;
-  final String name;
-  final String mikrotikName;
-  final double sellingPrice;
-  final double purchasePrice;
-  final int validityDays;
-  final int usageHours;
-  final int dataSizeGB;
-  final int dataSizeMB;
-  final String color;
-  final int stock;
-  final String? iconCodePoint;
-  final String? iconFontFamily;
-  final String? iconFontPackage;
-  final String networkId;
-  final String createdBy;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-  final bool isActive;
-
   PackageModel({
     required this.id,
     required this.name,
@@ -33,18 +13,18 @@ class PackageModel {
     required this.dataSizeMB,
     required this.color,
     required this.stock,
-    this.iconCodePoint,
-    this.iconFontFamily,
-    this.iconFontPackage,
     required this.networkId,
     required this.createdBy,
     required this.createdAt,
     required this.updatedAt,
+    this.iconCodePoint,
+    this.iconFontFamily,
+    this.iconFontPackage,
     this.isActive = true,
   });
 
   factory PackageModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = doc.data()! as Map<String, dynamic>;
     return PackageModel(
       id: doc.id,
       name: data['name']?.toString() ?? '',
@@ -67,6 +47,25 @@ class PackageModel {
       isActive: data['isActive'] as bool? ?? true,
     );
   }
+  final String id;
+  final String name;
+  final String mikrotikName;
+  final double sellingPrice;
+  final double purchasePrice;
+  final int validityDays;
+  final int usageHours;
+  final int dataSizeGB;
+  final int dataSizeMB;
+  final String color;
+  final int stock;
+  final String? iconCodePoint;
+  final String? iconFontFamily;
+  final String? iconFontPackage;
+  final String networkId;
+  final String createdBy;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final bool isActive;
 
   Map<String, dynamic> toFirestore() {
     return {

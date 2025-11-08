@@ -33,7 +33,7 @@ class CardProvider extends ChangeNotifier {
           notifyListeners();
         },
       );
-    } catch (e) {
+    } on Exception catch (e) {
       _isLoading = false;
       _error = e.toString();
       notifyListeners();
@@ -60,7 +60,7 @@ class CardProvider extends ChangeNotifier {
           notifyListeners();
         },
       );
-    } catch (e) {
+    } on Exception catch (e) {
       _isLoading = false;
       _error = e.toString();
       notifyListeners();
@@ -87,7 +87,7 @@ class CardProvider extends ChangeNotifier {
           notifyListeners();
         },
       );
-    } catch (e) {
+    } on Exception catch (e) {
       _isLoading = false;
       _error = e.toString();
       notifyListeners();
@@ -105,7 +105,7 @@ class CardProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
       return true;
-    } catch (e) {
+    } on Exception catch (e) {
       _isLoading = false;
       _error = e.toString();
       notifyListeners();
@@ -124,7 +124,7 @@ class CardProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
       return true;
-    } catch (e) {
+    } on Exception catch (e) {
       _isLoading = false;
       _error = e.toString();
       notifyListeners();
@@ -134,18 +134,18 @@ class CardProvider extends ChangeNotifier {
 
   // تحديث حالة الكرت
   Future<bool> updateCardStatus(String cardId, CardStatus status,
-      {String? usedBy, String? soldTo}) async {
+      {String? usedBy, String? soldTo,}) async {
     try {
       _isLoading = true;
       notifyListeners();
 
       await FirebaseCardService.updateCardStatus(cardId, status,
-          usedBy: usedBy, soldTo: soldTo);
+          usedBy: usedBy, soldTo: soldTo,);
 
       _isLoading = false;
       notifyListeners();
       return true;
-    } catch (e) {
+    } on Exception catch (e) {
       _isLoading = false;
       _error = e.toString();
       notifyListeners();
@@ -164,7 +164,26 @@ class CardProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
       return true;
-    } catch (e) {
+    } on Exception catch (e) {
+      _isLoading = false;
+      _error = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> deleteCards(List<String> cardIds) async {
+    if (cardIds.isEmpty) return true;
+    try {
+      _isLoading = true;
+      notifyListeners();
+
+      await FirebaseCardService.deleteCards(cardIds);
+
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } on Exception catch (e) {
       _isLoading = false;
       _error = e.toString();
       notifyListeners();
@@ -177,7 +196,7 @@ class CardProvider extends ChangeNotifier {
     try {
       _stats = await FirebaseCardService.getCardStats(networkId);
       notifyListeners();
-    } catch (e) {
+    } on Exception catch (e) {
       _error = e.toString();
       notifyListeners();
     }
@@ -207,7 +226,7 @@ class CardProvider extends ChangeNotifier {
           notifyListeners();
         },
       );
-    } catch (e) {
+    } on Exception catch (e) {
       _isLoading = false;
       _error = e.toString();
       notifyListeners();
@@ -218,7 +237,7 @@ class CardProvider extends ChangeNotifier {
   Future<List<Map<String, dynamic>>> exportCards(String networkId) async {
     try {
       return await FirebaseCardService.exportCardsToCSV(networkId);
-    } catch (e) {
+    } on Exception catch (e) {
       _error = e.toString();
       notifyListeners();
       return [];

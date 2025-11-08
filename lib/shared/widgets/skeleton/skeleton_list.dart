@@ -4,9 +4,8 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 /// قائمة skeleton عامة
 class SkeletonList extends StatelessWidget {
   const SkeletonList({
-    super.key,
+    required this.itemBuilder, super.key,
     this.itemCount = 5,
-    required this.itemBuilder,
     this.padding,
     this.spacing = 10,
   });
@@ -30,9 +29,8 @@ class SkeletonList extends StatelessWidget {
 /// قائمة skeleton مع scroll
 class SkeletonScrollList extends StatelessWidget {
   const SkeletonScrollList({
-    super.key,
+    required this.itemBuilder, super.key,
     this.itemCount = 5,
-    required this.itemBuilder,
     this.padding,
     this.spacing = 10,
   });

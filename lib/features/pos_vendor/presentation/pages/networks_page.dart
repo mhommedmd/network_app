@@ -19,7 +19,7 @@ import '../../data/services/firebase_network_service.dart';
 import 'network_details_page.dart';
 import 'network_search_page.dart';
 
-typedef NetworkSelectCallback = void Function(int id);
+typedef NetworkSelectCallback = void Function(NetworkConnectionModel network);
 
 class NetworksPage extends StatefulWidget {
   const NetworksPage({super.key, this.onNetworkSelect});
@@ -57,8 +57,9 @@ class _NetworksPageState extends State<NetworksPage>
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => NetworkDetailsPage(
-          networkId: int.tryParse(connection.networkId) ?? 0,
+          networkId: connection.networkId,
           networkOwnerId: connection.networkId,
+          networkName: connection.networkName,
         ),
       ),
     );
@@ -95,7 +96,7 @@ class _NetworksPageState extends State<NetworksPage>
         'تم إزالة الشبكة من قائمتك',
         title: 'تم حذف "${network.networkName}"',
       );
-    } catch (e) {
+    } on Exception catch (e) {
       if (!mounted) return;
       final errorMessage = ErrorHandler.extractErrorMessage(e);
       CustomToast.error(
@@ -202,8 +203,7 @@ class _NetworksPageState extends State<NetworksPage>
   }
 
   Widget _buildNetworksTab() {
-    final authProvider = context.watch<AuthProvider>();
-    final vendorId = authProvider.user?.id ?? '';
+    final vendorId = context.read<AuthProvider>().user?.id ?? '';
 
     return StreamBuilder<List<NetworkConnectionModel>>(
       stream: FirebaseNetworkService.getConnectedNetworks(vendorId),
@@ -281,7 +281,13 @@ class _NetworksPageState extends State<NetworksPage>
     return Container(
       margin: EdgeInsets.only(bottom: 12.h),
       child: AppCard(
-        onTap: () => _openDetails(network),
+        onTap: () {
+          if (widget.onNetworkSelect != null) {
+            widget.onNetworkSelect!(network);
+          } else {
+            _openDetails(network);
+          }
+        },
         padding: EdgeInsets.all(14.w),
         child: Row(
           children: [
@@ -329,8 +335,7 @@ class _NetworksPageState extends State<NetworksPage>
   }
 
   Widget _buildOrdersTab() {
-    final authProvider = context.watch<AuthProvider>();
-    final vendorId = authProvider.user?.id ?? '';
+    final vendorId = context.read<AuthProvider>().user?.id ?? '';
 
     if (vendorId.isEmpty) {
       return const Center(child: Text('معلومات المستخدم غير متوفرة'));
@@ -564,7 +569,7 @@ class _VendorOrderCard extends StatelessWidget {
           ),
 
           SizedBox(height: 12.h),
-          Divider(color: AppColors.gray200, height: 1),
+          const Divider(color: AppColors.gray200, height: 1),
           SizedBox(height: 12.h),
 
           // التفاصيل - قائمة الباقات
@@ -574,7 +579,7 @@ class _VendorOrderCard extends StatelessWidget {
               child: Row(
                 children: [
                   Icon(Icons.inventory_2_outlined,
-                      size: 16.w, color: AppColors.primary),
+                      size: 16.w, color: AppColors.primary,),
                   SizedBox(width: 6.w),
                   Expanded(
                     child: Text(
@@ -599,7 +604,7 @@ class _VendorOrderCard extends StatelessWidget {
           }),
 
           SizedBox(height: 12.h),
-          Divider(color: AppColors.gray200, height: 1),
+          const Divider(color: AppColors.gray200, height: 1),
           SizedBox(height: 12.h),
 
           // الإجمالي
@@ -609,7 +614,7 @@ class _VendorOrderCard extends StatelessWidget {
               Row(
                 children: [
                   Icon(Icons.confirmation_number_outlined,
-                      size: 18.w, color: AppColors.gray500),
+                      size: 18.w, color: AppColors.gray500,),
                   SizedBox(width: 8.w),
                   Text(
                     'إجمالي: ${order.totalCards} كرت',
