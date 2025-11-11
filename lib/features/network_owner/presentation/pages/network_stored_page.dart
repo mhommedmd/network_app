@@ -31,7 +31,6 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
   final ScrollController _scrollController = ScrollController();
   int _currentPage = 0;
   int _rowsPerPage = 50; // عدد الكروت في كل صفحة
-  final List<int> _rowsPerPageOptions = [25, 50, 100, 200];
   bool _sortByPackageAscending = true; // للفرز حسب الباقة
   bool _sortByVendorAscending = true;
   String? _packageToDelete; // الباقة المراد حذف كروتها
@@ -379,19 +378,19 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
 
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: const Color(0xFFF5F5F5),
+        surfaceTintColor: const Color(0xFFF5F5F5),
+        elevation: 0,
         title: Text(
           'المخزون',
           style: AppTypography.subheadline.copyWith(
             fontSize: 18.sp,
             fontWeight: FontWeight.w700,
-            color: AppColors.gray900,
+            color: const Color(0xFF1C2B33),
           ),
         ),
         centerTitle: true,
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black87),
+        iconTheme: const IconThemeData(color: Color(0xFF1C2B33)),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -423,7 +422,7 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
       return Container(
         width: double.infinity,
         decoration: const BoxDecoration(
-          gradient: AppColors.backgroundGradient,
+          color: Color(0xFFF5F5F5),
         ),
         child: SafeArea(
           child: Padding(
@@ -546,7 +545,7 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(
-        gradient: AppColors.backgroundGradient,
+        color: Color(0xFFF5F5F5),
       ),
       child: SafeArea(
         child: Padding(
@@ -1158,84 +1157,44 @@ class _NetworkStoredPageState extends State<NetworkStoredPage> {
     required VoidCallback? onLast,
   }) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
+      padding: EdgeInsets.symmetric(vertical: 12.h),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Wrap(
-            spacing: 12.w,
-            runSpacing: 8.h,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text(
-                'عرض $startIndex-$endIndex من $totalCards',
-                style: TextStyle(fontSize: 11.sp, color: AppColors.gray600),
-              ),
-              DropdownButtonHideUnderline(
-                child: DropdownButton<int>(
-                  value: _rowsPerPage,
-                  items: _rowsPerPageOptions
-                      .map(
-                        (value) => DropdownMenuItem<int>(
-                          value: value,
-                          child: Text('$value صف', style: TextStyle(fontSize: 11.sp)),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() {
-                        _rowsPerPage = value;
-                        _currentPage = 0;
-                      });
-                    }
-                  },
-                ),
-              ),
-            ],
+          IconButton(
+            icon: const Icon(Icons.first_page),
+            onPressed: onFirst,
+            color: onFirst != null ? AppColors.primary : AppColors.gray400,
           ),
-          SizedBox(height: 8.h),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Wrap(
-              spacing: 4.w,
-              runSpacing: 4.h,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.first_page),
-                  onPressed: onFirst,
-                  color: onFirst != null ? AppColors.primary : AppColors.gray400,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.chevron_left),
-                  onPressed: onPrevious,
-                  color: onPrevious != null ? AppColors.primary : AppColors.gray400,
-                ),
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(6.r),
-                  ),
-                  child: Text(
-                    '$currentPage / $totalPages',
-                    style: TextStyle(fontSize: 11.sp, color: AppColors.primary, fontWeight: FontWeight.w600),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.chevron_right),
-                  onPressed: onNext,
-                  color: onNext != null ? AppColors.primary : AppColors.gray400,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.last_page),
-                  onPressed: onLast,
-                  color: onLast != null ? AppColors.primary : AppColors.gray400,
-                ),
-              ],
+          IconButton(
+            icon: const Icon(Icons.chevron_left),
+            onPressed: onPrevious,
+            color: onPrevious != null ? AppColors.primary : AppColors.gray400,
+          ),
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 4.h),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6.r),
             ),
+            child: Text(
+              '$currentPage / $totalPages',
+              style: TextStyle(
+                fontSize: 12.sp,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primary,
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.chevron_right),
+            onPressed: onNext,
+            color: onNext != null ? AppColors.primary : AppColors.gray400,
+          ),
+          IconButton(
+            icon: const Icon(Icons.last_page),
+            onPressed: onLast,
+            color: onLast != null ? AppColors.primary : AppColors.gray400,
           ),
         ],
       ),

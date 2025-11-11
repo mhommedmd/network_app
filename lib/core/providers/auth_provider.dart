@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
@@ -180,6 +181,10 @@ class AuthProvider with ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final fb_auth.FirebaseAuth _firebaseAuth = fb_auth.FirebaseAuth.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
+  final FirebaseAppCheck _appCheck = FirebaseAppCheck.instance;
+
+  DateTime? _lastAppCheckTokenFetch;
+  String? _cachedAppCheckToken;
   // State
   User? _user;
   bool _isLoading = false;
@@ -544,6 +549,15 @@ class AuthProvider with ChangeNotifier {
     try {
       debugPrint('🔄 Uploading image...');
 
+      final firebaseUser = _firebaseAuth.currentUser;
+      if (firebaseUser == null) {
+        throw Exception('يجب تسجيل الدخول قبل رفع الصورة');
+      }
+
+      // Ensure fresh Auth & App Check tokens before uploading to avoid 401 errors
+      await firebaseUser.getIdToken();
+      await _ensureAppCheckToken();
+
       final fileName = 'profile_${_user!.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final storageRef = _storage.ref().child('profile_images/$fileName');
 
@@ -569,7 +583,39 @@ class AuthProvider with ChangeNotifier {
       return downloadUrl;
     } on FirebaseException catch (e) {
       debugPrint('❌ Upload failed: ${e.message}');
-      throw Exception('فشل رفع الصورة: ${e.message}');
+      final message = switch (e.code) {
+        'app-check-token-error' => 'رمز App Check غير صالح. تأكد من تمكين App Check أو تفعيل وضع Debug.',
+        'unauthenticated' => 'يرجى تسجيل الدخول مرة أخرى قبل رفع الصورة.',
+        _ => e.message ?? 'فشل رفع الصورة',
+      };
+      throw Exception('فشل رفع الصورة: $message');
+    }
+  }
+
+  Future<void> _ensureAppCheckToken() async {
+    final now = DateTime.now();
+    if (_cachedAppCheckToken != null && _lastAppCheckTokenFetch != null) {
+      final diff = now.difference(_lastAppCheckTokenFetch!);
+      if (diff < const Duration(minutes: 3)) {
+        return;
+      }
+    }
+
+    try {
+      _cachedAppCheckToken = await _appCheck.getToken();
+      _lastAppCheckTokenFetch = now;
+    } on FirebaseException catch (e) {
+      debugPrint('⚠️ App Check token fetch failed: ${e.message}');
+      if (e.code == 'app-check-token-error' || e.code == 'too-many-requests') {
+        if (_cachedAppCheckToken != null) {
+          return;
+        }
+        await Future<void>.delayed(const Duration(seconds: 3));
+        _cachedAppCheckToken = await _appCheck.getToken();
+        _lastAppCheckTokenFetch = DateTime.now();
+      } else {
+        rethrow;
+      }
     }
   }
 

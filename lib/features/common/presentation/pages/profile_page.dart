@@ -24,98 +24,7 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  bool _isEditingProfile = false;
-  bool _isEditingPassword = false;
-
-  final _formKey = GlobalKey<FormState>();
-  final _passwordFormKey = GlobalKey<FormState>();
-
-  late TextEditingController _nameController;
-  late TextEditingController _ownerNameController;
-  late TextEditingController _networkNameController;
-  late TextEditingController _emailController;
-  late TextEditingController _secondPhoneController;
-  late TextEditingController _governorateController;
-  late TextEditingController _districtController;
-  late TextEditingController _cityController;
-  late TextEditingController _addressController;
-
-  final _currentPasswordController = TextEditingController();
-  final _newPasswordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
-
-  bool _obscureCurrentPassword = true;
-  bool _obscureNewPassword = true;
-  bool _obscureConfirmPassword = true;
-
   File? _selectedImage;
-
-  @override
-  void initState() {
-    super.initState();
-    final user = context.read<AuthProvider>().user;
-    _nameController = TextEditingController(text: user?.name ?? '');
-    _ownerNameController = TextEditingController(text: user?.ownerName ?? '');
-    _networkNameController = TextEditingController(text: user?.networkName ?? '');
-    _emailController = TextEditingController(text: user?.email ?? '');
-    _secondPhoneController = TextEditingController(text: user?.secondPhone ?? '');
-    _governorateController = TextEditingController(text: user?.governorate ?? '');
-    _districtController = TextEditingController(text: user?.district ?? '');
-    _cityController = TextEditingController(text: user?.city ?? '');
-    _addressController = TextEditingController(text: user?.address ?? '');
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _ownerNameController.dispose();
-    _networkNameController.dispose();
-    _emailController.dispose();
-    _secondPhoneController.dispose();
-    _governorateController.dispose();
-    _districtController.dispose();
-    _cityController.dispose();
-    _addressController.dispose();
-    _currentPasswordController.dispose();
-    _newPasswordController.dispose();
-    _confirmPasswordController.dispose();
-    super.dispose();
-  }
-
-  @override
-  void didUpdateWidget(covariant ProfilePage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // تحديث الـ TextControllers عند تحديث البيانات من AuthProvider
-    if (!_isEditingProfile) {
-      _updateControllers();
-    }
-  }
-
-  void _updateControllers() {
-    final user = context.read<AuthProvider>().user;
-    if (user != null) {
-      print('🔄 تحديث TextControllers:');
-      print('  - الاسم: ${user.name}');
-      print('  - اسم المالك: ${user.ownerName}');
-      print('  - اسم الشبكة: ${user.networkName}');
-      print('  - البريد: ${user.email}');
-      print('  - الهاتف الثاني: ${user.secondPhone}');
-
-      _nameController.text = user.name;
-      _ownerNameController.text = user.ownerName ?? '';
-      _networkNameController.text = user.networkName ?? '';
-      _emailController.text = user.email;
-      _secondPhoneController.text = user.secondPhone ?? '';
-      _governorateController.text = user.governorate ?? '';
-      _districtController.text = user.district ?? '';
-      _cityController.text = user.city ?? '';
-      _addressController.text = user.address ?? '';
-
-      print('✅ تم تحديث TextControllers');
-    } else {
-      print('❌ لا يوجد مستخدم لتحديث TextControllers');
-    }
-  }
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
@@ -133,6 +42,160 @@ class _ProfilePageState extends State<ProfilePage> {
 
       // رفع الصورة مباشرة إلى Firebase
       await _uploadProfileImage();
+    }
+  }
+
+  Future<void> _showChangePasswordSheet() async {
+    final formKey = GlobalKey<FormState>();
+    final currentController = TextEditingController();
+    final newController = TextEditingController();
+    final confirmController = TextEditingController();
+    var obscureCurrent = true;
+    var obscureNew = true;
+    var obscureConfirm = true;
+    var isSubmitting = false;
+
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24.r))),
+      builder: (sheetContext) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+            left: 20.w,
+            right: 20.w,
+            top: 24.h,
+          ),
+          child: StatefulBuilder(
+            builder: (context, setSheetState) {
+              return SafeArea(
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'تغيير كلمة المرور',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 16.sp,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      SizedBox(height: 20.h),
+                      TextFormField(
+                        controller: currentController,
+                        obscureText: obscureCurrent,
+                        decoration: InputDecoration(
+                          labelText: 'كلمة المرور الحالية',
+                          prefixIcon: const Icon(Icons.lock_outline, color: AppColors.primary),
+                          suffixIcon: IconButton(
+                            icon: Icon(obscureCurrent ? Icons.visibility_off : Icons.visibility),
+                            onPressed: () => setSheetState(() => obscureCurrent = !obscureCurrent),
+                          ),
+                        ),
+                        validator: (value) => (value == null || value.isEmpty) ? 'كلمة المرور الحالية مطلوبة' : null,
+                      ),
+                      SizedBox(height: 12.h),
+                      TextFormField(
+                        controller: newController,
+                        obscureText: obscureNew,
+                        decoration: InputDecoration(
+                          labelText: 'كلمة المرور الجديدة',
+                          prefixIcon: const Icon(Icons.lock_reset, color: AppColors.primary),
+                          suffixIcon: IconButton(
+                            icon: Icon(obscureNew ? Icons.visibility_off : Icons.visibility),
+                            onPressed: () => setSheetState(() => obscureNew = !obscureNew),
+                          ),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'كلمة المرور الجديدة مطلوبة';
+                          }
+                          if (value.length < 6) {
+                            return 'كلمة المرور يجب أن تكون 6 أحرف على الأقل';
+                          }
+                          return null;
+                        },
+                      ),
+                      SizedBox(height: 12.h),
+                      TextFormField(
+                        controller: confirmController,
+                        obscureText: obscureConfirm,
+                        decoration: InputDecoration(
+                          labelText: 'تأكيد كلمة المرور',
+                          prefixIcon: const Icon(Icons.lock, color: AppColors.primary),
+                          suffixIcon: IconButton(
+                            icon: Icon(obscureConfirm ? Icons.visibility_off : Icons.visibility),
+                            onPressed: () => setSheetState(() => obscureConfirm = !obscureConfirm),
+                          ),
+                        ),
+                        validator: (value) => value == newController.text ? null : 'كلمة المرور غير متطابقة',
+                      ),
+                      SizedBox(height: 20.h),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: AppButton(
+                              text: 'إلغاء',
+                              variant: AppButtonVariant.outline,
+                              onPressed: () => Navigator.of(sheetContext).pop(false),
+                            ),
+                          ),
+                          SizedBox(width: 12.w),
+                          Expanded(
+                            child: AppButton(
+                              text: 'تغيير',
+                              loading: isSubmitting,
+                              onPressed: () async {
+                                if (!formKey.currentState!.validate()) return;
+                                setSheetState(() => isSubmitting = true);
+                                final authProvider = context.read<AuthProvider>();
+                                final success = await authProvider.changePassword(
+                                  currentPassword: currentController.text,
+                                  newPassword: newController.text,
+                                );
+                                if (!mounted) return;
+                                setSheetState(() => isSubmitting = false);
+                                if (success) {
+                                  Navigator.of(sheetContext).pop(true);
+                                } else {
+                                  CustomToast.error(
+                                    context,
+                                    authProvider.error ?? 'فشل تغيير كلمة المرور',
+                                    title: 'فشل التغيير',
+                                  );
+                                }
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 12.h),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+
+    currentController.dispose();
+    newController.dispose();
+    confirmController.dispose();
+
+    if (result ?? false) {
+      if (!mounted) return;
+      CustomToast.success(
+        context,
+        'تم تغيير كلمة المرور بنجاح',
+        title: 'تم التحديث',
+      );
     }
   }
 
@@ -189,580 +252,251 @@ class _ProfilePageState extends State<ProfilePage> {
           style: TextStyle(
             fontSize: 18.sp,
             fontWeight: FontWeight.w700,
-            color: AppColors.gray900,
+            color: AppColors.textPrimary,
           ),
         ),
         centerTitle: true,
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
+        backgroundColor: const Color(0xFFF5F5F5),
+        surfaceTintColor: const Color(0xFFF5F5F5),
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black87),
+        iconTheme: const IconThemeData(color: AppColors.textPrimary),
       ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundGradient,
-        ),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.all(20.w),
-            child: Column(
-              children: [
-                // صورة البروفايل
-                _buildProfileImageSection(user),
-                SizedBox(height: 24.h),
-
-                // معلومات الحساب
-                _buildAccountInfoSection(user),
-                SizedBox(height: 16.h),
-
-                // الأمان
-                _buildSecuritySection(),
-                SizedBox(height: 16.h),
-
-                // الإعدادات
-                _buildSettingsSection(languageProvider),
-                SizedBox(height: 24.h),
-
-                // زر تسجيل الخروج
-                AppButton(
-                  text: languageProvider.logout,
-                  variant: AppButtonVariant.error,
-                  fullWidth: true,
-                  size: AppButtonSize.large,
-                  icon: Icon(Icons.logout, size: 20.w, color: Colors.white),
-                  onPressed: () async {
-                    final confirmed = await showDialog<bool>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('تسجيل الخروج'),
-                        content: const Text('هل أنت متأكد من تسجيل الخروج؟'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, false),
-                            child: const Text('إلغاء'),
+      backgroundColor: const Color(0xFFF5F5F5),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 20.h),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildHeaderCard(user),
+              SizedBox(height: 20.h),
+              _buildOptionsCard(languageProvider),
+              SizedBox(height: 24.h),
+              AppButton(
+                text: languageProvider.logout,
+                variant: AppButtonVariant.error,
+                fullWidth: true,
+                size: AppButtonSize.large,
+                icon: Icon(Icons.logout, size: 20.w, color: Colors.white),
+                onPressed: () async {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('تسجيل الخروج'),
+                      content: const Text('هل أنت متأكد من تسجيل الخروج؟'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('إلغاء'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppColors.error,
                           ),
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, true),
-                            style: TextButton.styleFrom(
-                              foregroundColor: AppColors.error,
-                            ),
-                            child: const Text('تسجيل الخروج'),
-                          ),
-                        ],
-                      ),
-                    );
+                          child: const Text('تسجيل الخروج'),
+                        ),
+                      ],
+                    ),
+                  );
 
-                    if (confirmed ?? false) {
-                      await authProvider.logout();
-                      if (mounted) {
-                        context.go('/login');
-                      }
+                  if (confirmed ?? false) {
+                    await authProvider.logout();
+                    if (mounted) {
+                      context.go('/login');
                     }
-                  },
-                ),
-              ],
-            ),
+                  }
+                },
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildProfileImageSection(User? user) {
-    return AppCard(
-      child: Column(
+  Widget _buildHeaderCard(User? user) {
+    final displayName = user?.name ?? 'مستخدم';
+    final secondaryLine = user?.type == UserType.posVendor ? (user?.ownerName ?? '') : (user?.name ?? '');
+    final phone = user?.phone ?? '';
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 4.w),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Stack(
-            children: [
-              CircleAvatar(
-                radius: 50.r,
-                backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                backgroundImage: _selectedImage != null
-                    ? FileImage(_selectedImage!)
+          GestureDetector(
+            onTap: _pickImage,
+            child: ClipOval(
+              child: SizedBox(
+                width: 80.w,
+                height: 80.w,
+                child: _selectedImage != null
+                    ? Image.file(_selectedImage!, fit: BoxFit.cover)
                     : (user?.avatar != null && user!.avatar!.startsWith('http'))
-                        ? NetworkImage(user.avatar!) as ImageProvider
-                        : null,
-                child: _selectedImage == null && (user?.avatar == null || !user!.avatar!.startsWith('http'))
-                    ? Text(
-                        user?.avatar ?? user?.name.substring(0, 1).toUpperCase() ?? 'م',
-                        style: TextStyle(
-                          color: AppColors.primary,
-                          fontSize: 40.sp,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      )
-                    : null,
-              ),
-              Positioned(
-                bottom: 0,
-                right: 0,
-                child: GestureDetector(
-                  onTap: _pickImage,
-                  child: Container(
-                    padding: EdgeInsets.all(8.w),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
-                    ),
-                    child: Icon(
-                      Icons.camera_alt,
-                      size: 16.w,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 12.h),
-          Text(
-            user?.name ?? 'مستخدم',
-            style: TextStyle(
-              fontSize: 20.sp,
-              fontWeight: FontWeight.w700,
-              color: AppColors.gray900,
-            ),
-          ),
-          SizedBox(height: 4.h),
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 4.h),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12.r),
-            ),
-            child: Text(
-              user?.type == UserType.networkOwner ? 'مالك شبكة' : 'نقطة بيع',
-              style: TextStyle(
-                fontSize: 12.sp,
-                fontWeight: FontWeight.w600,
-                color: AppColors.primary,
+                        ? Image.network(user.avatar!, fit: BoxFit.cover)
+                        : Container(
+                            color: AppColors.primary.withValues(alpha: 0.12),
+                            alignment: Alignment.center,
+                            child: Text(
+                              displayName.substring(0, 1).toUpperCase(),
+                              style: TextStyle(
+                                color: AppColors.primary,
+                                fontSize: 30.sp,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
               ),
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAccountInfoSection(User? user) {
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'معلومات الحساب',
-                style: TextStyle(
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.gray900,
-                ),
-              ),
-              if (!_isEditingProfile)
-                TextButton.icon(
-                  onPressed: () => setState(() => _isEditingProfile = true),
-                  icon: Icon(Icons.edit, size: 16.w),
-                  label: const Text('تعديل'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppColors.primary,
-                  ),
-                ),
-            ],
-          ),
-          SizedBox(height: 16.h),
-          Form(
-            key: _formKey,
+          SizedBox(width: 16.w),
+          Expanded(
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // لمستخدمي posVendor: اسم المتجر من name وaسم المالك من ownerName
-                if (user?.type == UserType.posVendor) ...[
-                  _buildInfoField(
-                    label: 'اسم المتجر',
-                    controller: _nameController,
-                    enabled: _isEditingProfile,
-                    icon: Icons.store,
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'اسم المتجر مطلوب';
-                      }
-                      return null;
-                    },
+                Text(
+                  displayName,
+                  style: TextStyle(
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
                   ),
-                  SizedBox(height: 12.h),
-                  _buildInfoField(
-                    label: 'اسم مالك المتجر',
-                    controller: _ownerNameController,
-                    enabled: _isEditingProfile,
-                    icon: Icons.person,
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'اسم المالك مطلوب';
-                      }
-                      return null;
-                    },
+                ),
+                if (secondaryLine.isNotEmpty) ...[
+                  SizedBox(height: 6.h),
+                  Text(
+                    secondaryLine,
+                    style: TextStyle(
+                      fontSize: 15.sp,
+                      color: AppColors.gray700,
+                    ),
                   ),
-                  SizedBox(height: 12.h),
-                ] else ...[
-                  // لمستخدمي networkOwner: name هو اسم المالك و networkName هو اسم الشبكة
-                  _buildInfoField(
-                    label: 'اسم مالك الشبكة',
-                    controller: _nameController,
-                    enabled: _isEditingProfile,
-                    icon: Icons.person,
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'اسم المالك مطلوب';
-                      }
-                      return null;
-                    },
-                  ),
-                  SizedBox(height: 12.h),
-
-                  // اسم الشبكة (لمالكي الشبكات فقط)
-                  _buildInfoField(
-                    label: 'اسم الشبكة',
-                    controller: _networkNameController,
-                    enabled: _isEditingProfile,
-                    icon: Icons.wifi,
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'اسم الشبكة مطلوب';
-                      }
-                      return null;
-                    },
-                  ),
-                  SizedBox(height: 12.h),
                 ],
-
-                // رقم الهاتف (غير قابل للتعديل)
-                _buildInfoField(
-                  label: 'رقم الهاتف',
-                  initialValue: user?.phone ?? '',
-                  enabled: false,
-                  icon: Icons.phone,
-                  helperText: 'لا يمكن تغيير رقم الهاتف الأساسي',
-                ),
-                SizedBox(height: 12.h),
-
-                // المحافظة والمديرية والمدينة (لجميع المستخدمين)
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildInfoField(
-                        label: 'المحافظة',
-                        controller: _governorateController,
-                        enabled: _isEditingProfile,
-                        icon: Icons.location_city,
-                        hintText: 'صنعاء',
-                      ),
+                if (phone.isNotEmpty) ...[
+                  SizedBox(height: 6.h),
+                  Text(
+                    phone,
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      color: AppColors.gray600,
                     ),
-                    SizedBox(width: 12.w),
-                    Expanded(
-                      child: _buildInfoField(
-                        label: 'المديرية',
-                        controller: _districtController,
-                        enabled: _isEditingProfile,
-                        icon: Icons.place,
-                        hintText: 'عتق',
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 12.h),
-
-                // المدينة (لجميع المستخدمين)
-                _buildInfoField(
-                  label: 'المدينة',
-                  controller: _cityController,
-                  enabled: _isEditingProfile,
-                  icon: Icons.location_on,
-                  hintText: 'المدينة',
-                ),
-                SizedBox(height: 12.h),
-
-                // العنوان التفصيلي (لجميع المستخدمين)
-                _buildInfoField(
-                  label: 'العنوان التفصيلي',
-                  controller: _addressController,
-                  enabled: _isEditingProfile,
-                  icon: Icons.home,
-                  hintText: 'العنوان الكامل',
-                ),
-                SizedBox(height: 12.h),
-
-                // البريد الإلكتروني
-                _buildInfoField(
-                  label: 'البريد الإلكتروني',
-                  controller: _emailController,
-                  enabled: _isEditingProfile,
-                  icon: Icons.email,
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (value) {
-                    if (value != null && value.isNotEmpty) {
-                      if (!value.contains('@')) {
-                        return 'البريد الإلكتروني غير صحيح';
-                      }
-                    }
-                    return null;
-                  },
-                ),
-                SizedBox(height: 12.h),
-
-                // رقم هاتف إضافي
-                _buildInfoField(
-                  label: 'رقم هاتف إضافي (اختياري)',
-                  controller: _secondPhoneController,
-                  enabled: _isEditingProfile,
-                  icon: Icons.phone_android,
-                  keyboardType: TextInputType.phone,
-                  hintText: '7xxxxxxxx',
-                ),
+                  ),
+                ],
               ],
             ),
           ),
-          if (_isEditingProfile) ...[
-            SizedBox(height: 16.h),
-            Row(
-              children: [
-                Expanded(
-                  child: AppButton(
-                    text: 'إلغاء',
-                    variant: AppButtonVariant.outline,
-                    onPressed: () {
-                      setState(() {
-                        _isEditingProfile = false;
-                        _nameController.text = user?.name ?? '';
-                        _ownerNameController.text = user?.ownerName ?? '';
-                        _networkNameController.text = user?.networkName ?? '';
-                        _emailController.text = user?.email ?? '';
-                        _secondPhoneController.text = user?.secondPhone ?? '';
-                        _governorateController.text = user?.governorate ?? '';
-                        _districtController.text = user?.district ?? '';
-                        _cityController.text = user?.city ?? '';
-                        _addressController.text = user?.address ?? '';
-                      });
-                    },
-                  ),
-                ),
-                SizedBox(width: 12.w),
-                Expanded(
-                  child: AppButton(
-                    text: 'حفظ التغييرات',
-                    onPressed: _saveProfileChanges,
-                  ),
-                ),
-              ],
-            ),
-          ],
         ],
       ),
     );
   }
 
-  Widget _buildSecuritySection() {
+  Widget _buildOptionsCard(LanguageProvider languageProvider) {
+    final authProvider = context.read<AuthProvider>();
+    final user = authProvider.user;
+    final isArabic = languageProvider.isArabic;
+
     return AppCard(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'الأمان',
-                style: TextStyle(
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.gray900,
-                ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Container(
+              padding: EdgeInsets.all(8.w),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12.r),
               ),
-              if (!_isEditingPassword)
-                TextButton.icon(
-                  onPressed: () => setState(() => _isEditingPassword = true),
-                  icon: Icon(Icons.lock_outline, size: 16.w),
-                  label: const Text('تغيير كلمة المرور'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppColors.primary,
-                  ),
-                ),
-            ],
-          ),
-          if (_isEditingPassword) ...[
-            SizedBox(height: 16.h),
-            Form(
-              key: _passwordFormKey,
-              child: Column(
-                children: [
-                  // كلمة المرور الحالية
-                  TextFormField(
-                    controller: _currentPasswordController,
-                    obscureText: _obscureCurrentPassword,
-                    decoration: InputDecoration(
-                      labelText: 'كلمة المرور الحالية',
-                      prefixIcon: const Icon(Icons.lock),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscureCurrentPassword ? Icons.visibility_off : Icons.visibility,
-                        ),
-                        onPressed: () => setState(
-                          () => _obscureCurrentPassword = !_obscureCurrentPassword,
-                        ),
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12.r),
-                      ),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'كلمة المرور الحالية مطلوبة';
-                      }
-                      return null;
-                    },
-                  ),
-                  SizedBox(height: 12.h),
-
-                  // كلمة المرور الجديدة
-                  TextFormField(
-                    controller: _newPasswordController,
-                    obscureText: _obscureNewPassword,
-                    decoration: InputDecoration(
-                      labelText: 'كلمة المرور الجديدة',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscureNewPassword ? Icons.visibility_off : Icons.visibility,
-                        ),
-                        onPressed: () => setState(
-                          () => _obscureNewPassword = !_obscureNewPassword,
-                        ),
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12.r),
-                      ),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'كلمة المرور الجديدة مطلوبة';
-                      }
-                      if (value.length < 6) {
-                        return 'كلمة المرور يجب أن تكون 6 أحرف على الأقل';
-                      }
-                      return null;
-                    },
-                  ),
-                  SizedBox(height: 12.h),
-
-                  // تأكيد كلمة المرور
-                  TextFormField(
-                    controller: _confirmPasswordController,
-                    obscureText: _obscureConfirmPassword,
-                    decoration: InputDecoration(
-                      labelText: 'تأكيد كلمة المرور',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscureConfirmPassword ? Icons.visibility_off : Icons.visibility,
-                        ),
-                        onPressed: () => setState(
-                          () => _obscureConfirmPassword = !_obscureConfirmPassword,
-                        ),
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12.r),
-                      ),
-                    ),
-                    validator: (value) {
-                      if (value != _newPasswordController.text) {
-                        return 'كلمة المرور غير متطابقة';
-                      }
-                      return null;
-                    },
-                  ),
-                  SizedBox(height: 16.h),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: AppButton(
-                          text: 'إلغاء',
-                          variant: AppButtonVariant.outline,
-                          onPressed: () {
-                            setState(() {
-                              _isEditingPassword = false;
-                              _currentPasswordController.clear();
-                              _newPasswordController.clear();
-                              _confirmPasswordController.clear();
-                            });
-                          },
-                        ),
-                      ),
-                      SizedBox(width: 12.w),
-                      Expanded(
-                        child: AppButton(
-                          text: 'تغيير كلمة المرور',
-                          onPressed: _changePassword,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+              child: const Icon(Icons.person_outline, color: AppColors.primary),
             ),
-          ] else ...[
-            SizedBox(height: 8.h),
-            Text(
-              'آخر تغيير لكلمة المرور: لم يتم التغيير',
+            title: const Text(
+              'معلومات الحساب',
               style: TextStyle(
-                fontSize: 12.sp,
-                color: AppColors.gray600,
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w600,
               ),
             ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSettingsSection(LanguageProvider languageProvider) {
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'الإعدادات',
-            style: TextStyle(
-              fontSize: 16.sp,
-              fontWeight: FontWeight.w700,
-              color: AppColors.gray900,
+            subtitle: Text(
+              user?.email ?? '',
+              style: TextStyle(color: AppColors.gray600, fontSize: 12.sp),
             ),
-          ),
-          SizedBox(height: 16.h),
-          _buildSettingOption(
-            icon: Icons.language,
-            title: 'اللغة',
-            subtitle: languageProvider.isArabic ? 'العربية' : 'English',
-            onTap: languageProvider.toggleLanguage,
-          ),
-          const Divider(color: AppColors.gray200),
-          _buildSettingOption(
-            icon: Icons.notifications,
-            title: 'الإشعارات',
-            subtitle: 'مفعل',
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.gray400),
             onTap: () {
-              CustomToast.info(
-                context,
-                'هذه الميزة قيد التطوير',
-                title: 'قريباً',
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const AccountInfoPage(),
+                ),
               );
             },
           ),
-          const Divider(color: AppColors.gray200),
-          _buildSettingOption(
-            icon: Icons.help,
-            title: 'المساعدة والدعم',
-            subtitle: '',
+          const Divider(height: 1, color: AppColors.gray200),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Container(
+              padding: EdgeInsets.all(8.w),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12.r),
+              ),
+              child: const Icon(Icons.lock_outline, color: AppColors.primary),
+            ),
+            title: const Text(
+              'تغيير كلمة المرور',
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.gray400),
+            onTap: _showChangePasswordSheet,
+          ),
+          const Divider(height: 1, color: AppColors.gray200),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Container(
+              padding: EdgeInsets.all(8.w),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12.r),
+              ),
+              child: const Icon(Icons.language, color: AppColors.primary),
+            ),
+            title: const Text(
+              'اللغة',
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            subtitle: Text(
+              isArabic ? 'العربية' : 'English',
+              style: TextStyle(color: AppColors.gray600, fontSize: 12.sp),
+            ),
+            trailing: Switch(
+              value: isArabic,
+              activeThumbColor: AppColors.primary,
+              onChanged: (_) => languageProvider.toggleLanguage(),
+            ),
+          ),
+          const Divider(height: 1, color: AppColors.gray200),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Container(
+              padding: EdgeInsets.all(8.w),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12.r),
+              ),
+              child: const Icon(Icons.help_outline, color: AppColors.primary),
+            ),
+            title: const Text(
+              'المساعدة والدعم',
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.gray400),
             onTap: () {
               CustomToast.info(
                 context,
@@ -771,11 +505,25 @@ class _ProfilePageState extends State<ProfilePage> {
               );
             },
           ),
-          const Divider(color: AppColors.gray200),
-          _buildSettingOption(
-            icon: Icons.info,
-            title: 'حول التطبيق',
-            subtitle: 'الإصدار 1.0.0',
+          const Divider(height: 1, color: AppColors.gray200),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Container(
+              padding: EdgeInsets.all(8.w),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12.r),
+              ),
+              child: const Icon(Icons.info_outline, color: AppColors.primary),
+            ),
+            title: const Text(
+              'حول التطبيق',
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.gray400),
             onTap: () {
               showAboutDialog(
                 context: context,
@@ -789,223 +537,257 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
     );
   }
+}
+
+class AccountInfoPage extends StatefulWidget {
+  const AccountInfoPage({super.key});
+
+  @override
+  State<AccountInfoPage> createState() => _AccountInfoPageState();
+}
+
+class _AccountInfoPageState extends State<AccountInfoPage> {
+  final _formKey = GlobalKey<FormState>();
+
+  late final AuthProvider _authProvider;
+  User? get _user => _authProvider.user;
+
+  late final TextEditingController _nameController;
+  late final TextEditingController _ownerNameController;
+  late final TextEditingController _networkNameController;
+  late final TextEditingController _emailController;
+  late final TextEditingController _secondPhoneController;
+  late final TextEditingController _governorateController;
+  late final TextEditingController _districtController;
+  late final TextEditingController _cityController;
+  late final TextEditingController _addressController;
+
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _authProvider = context.read<AuthProvider>();
+    final user = _authProvider.user;
+    _nameController = TextEditingController(text: user?.name ?? '');
+    _ownerNameController = TextEditingController(text: user?.ownerName ?? '');
+    _networkNameController = TextEditingController(text: user?.networkName ?? '');
+    _emailController = TextEditingController(text: user?.email ?? '');
+    _secondPhoneController = TextEditingController(text: user?.secondPhone ?? '');
+    _governorateController = TextEditingController(text: user?.governorate ?? '');
+    _districtController = TextEditingController(text: user?.district ?? '');
+    _cityController = TextEditingController(text: user?.city ?? '');
+    _addressController = TextEditingController(text: user?.address ?? '');
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _ownerNameController.dispose();
+    _networkNameController.dispose();
+    _emailController.dispose();
+    _secondPhoneController.dispose();
+    _governorateController.dispose();
+    _districtController.dispose();
+    _cityController.dispose();
+    _addressController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final userType = _user?.type;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F5F5),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFF5F5F5),
+        surfaceTintColor: const Color(0xFFF5F5F5),
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: AppColors.textPrimary),
+        title: const Text(
+          'معلومات الحساب',
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 20.h),
+          child: AppCard(
+            padding: EdgeInsets.all(20.w),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (userType == UserType.posVendor) ...[
+                    _buildInfoField(
+                      label: 'اسم المتجر',
+                      controller: _nameController,
+                      icon: Icons.store,
+                      validator: (value) => value == null || value.trim().isEmpty ? 'اسم المتجر مطلوب' : null,
+                    ),
+                    SizedBox(height: 12.h),
+                    _buildInfoField(
+                      label: 'اسم مالك المتجر',
+                      controller: _ownerNameController,
+                      icon: Icons.person_outline,
+                      validator: (value) => value == null || value.trim().isEmpty ? 'اسم المالك مطلوب' : null,
+                    ),
+                    SizedBox(height: 12.h),
+                  ] else ...[
+                    _buildInfoField(
+                      label: 'اسم مالك الشبكة',
+                      controller: _nameController,
+                      icon: Icons.person_outline,
+                      validator: (value) => value == null || value.trim().isEmpty ? 'اسم المالك مطلوب' : null,
+                    ),
+                    SizedBox(height: 12.h),
+                    _buildInfoField(
+                      label: 'اسم الشبكة',
+                      controller: _networkNameController,
+                      icon: Icons.wifi,
+                      validator: (value) => value == null || value.trim().isEmpty ? 'اسم الشبكة مطلوب' : null,
+                    ),
+                    SizedBox(height: 12.h),
+                  ],
+                  TextFormField(
+                    enabled: false,
+                    initialValue: _user?.phone ?? '',
+                    decoration: InputDecoration(
+                      labelText: 'رقم الهاتف',
+                      helperText: 'لا يمكن تغيير رقم الهاتف الأساسي',
+                      prefixIcon: const Icon(Icons.phone, color: AppColors.primary),
+                      filled: true,
+                      fillColor: AppColors.gray50,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12.r),
+                        borderSide: const BorderSide(color: AppColors.gray300),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 12.h),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildInfoField(
+                          label: 'المحافظة',
+                          controller: _governorateController,
+                          icon: Icons.location_city,
+                        ),
+                      ),
+                      SizedBox(width: 12.w),
+                      Expanded(
+                        child: _buildInfoField(
+                          label: 'المديرية',
+                          controller: _districtController,
+                          icon: Icons.place,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 12.h),
+                  _buildInfoField(
+                    label: 'المدينة',
+                    controller: _cityController,
+                    icon: Icons.location_on,
+                  ),
+                  SizedBox(height: 12.h),
+                  _buildInfoField(
+                    label: 'العنوان التفصيلي',
+                    controller: _addressController,
+                    icon: Icons.home_outlined,
+                  ),
+                  SizedBox(height: 12.h),
+                  _buildInfoField(
+                    label: 'البريد الإلكتروني',
+                    controller: _emailController,
+                    icon: Icons.email_outlined,
+                    keyboardType: TextInputType.emailAddress,
+                    validator: (value) {
+                      if (value != null && value.isNotEmpty && !value.contains('@')) {
+                        return 'البريد الإلكتروني غير صحيح';
+                      }
+                      return null;
+                    },
+                  ),
+                  SizedBox(height: 12.h),
+                  _buildInfoField(
+                    label: 'رقم هاتف إضافي (اختياري)',
+                    controller: _secondPhoneController,
+                    icon: Icons.phone_android,
+                    keyboardType: TextInputType.phone,
+                  ),
+                  SizedBox(height: 24.h),
+                  AppButton(
+                    text: 'حفظ التغييرات',
+                    loading: _isSaving,
+                    onPressed: _handleSave,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _buildInfoField({
     required String label,
-    required bool enabled,
     required IconData icon,
-    TextEditingController? controller,
-    String? initialValue,
-    String? hintText,
-    String? helperText,
+    required TextEditingController controller,
     TextInputType? keyboardType,
     String? Function(String?)? validator,
   }) {
     return TextFormField(
       controller: controller,
-      initialValue: controller == null ? initialValue : null,
-      enabled: enabled,
       keyboardType: keyboardType,
       decoration: InputDecoration(
         labelText: label,
-        hintText: hintText,
-        helperText: helperText,
-        prefixIcon: Icon(icon),
-        filled: true,
-        fillColor: enabled ? Colors.white : AppColors.gray50,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12.r),
-          borderSide: const BorderSide(color: AppColors.gray300),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12.r),
-          borderSide: const BorderSide(color: AppColors.gray300),
-        ),
-        disabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12.r),
-          borderSide: const BorderSide(color: AppColors.gray200),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12.r),
-          borderSide: const BorderSide(color: AppColors.primary, width: 2),
-        ),
+        prefixIcon: Icon(icon, color: AppColors.primary),
       ),
       validator: validator,
     );
   }
 
-  Widget _buildSettingOption({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return ListTile(
-      leading: Container(
-        padding: EdgeInsets.all(8.w),
-        decoration: BoxDecoration(
-          color: AppColors.primary.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(10.r),
-        ),
-        child: Icon(
-          icon,
-          color: AppColors.primary,
-          size: 20.w,
-        ),
-      ),
-      title: Text(
-        title,
-        style: TextStyle(
-          fontSize: 14.sp,
-          fontWeight: FontWeight.w600,
-          color: AppColors.gray900,
-        ),
-      ),
-      subtitle: subtitle.isNotEmpty
-          ? Text(
-              subtitle,
-              style: TextStyle(
-                fontSize: 12.sp,
-                color: AppColors.gray600,
-              ),
-            )
-          : null,
-      trailing: Icon(
-        Icons.arrow_forward_ios,
-        size: 16.w,
-        color: AppColors.gray400,
-      ),
-      onTap: onTap,
-      contentPadding: EdgeInsets.zero,
-    );
-  }
-
-  Future<void> _saveProfileChanges() async {
+  Future<void> _handleSave() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final authProvider = context.read<AuthProvider>();
+    setState(() => _isSaving = true);
 
-    final newName = _nameController.text.trim();
-    final newOwnerName = _ownerNameController.text.trim().isEmpty ? null : _ownerNameController.text.trim();
-    final newNetworkName = _networkNameController.text.trim().isEmpty ? null : _networkNameController.text.trim();
-    final newEmail = _emailController.text.trim().isEmpty ? null : _emailController.text.trim();
-    final newSecondPhone = _secondPhoneController.text.trim().isEmpty ? null : _secondPhoneController.text.trim();
-    final newGovernorate = _governorateController.text.trim().isEmpty ? null : _governorateController.text.trim();
-    final newDistrict = _districtController.text.trim().isEmpty ? null : _districtController.text.trim();
-    final newCity = _cityController.text.trim().isEmpty ? null : _cityController.text.trim();
-    final newAddress = _addressController.text.trim().isEmpty ? null : _addressController.text.trim();
-
-    print('🔄 محاولة حفظ التغييرات:');
-    print('  - الاسم الجديد: $newName');
-    print('  - اسم المالك الجديد: $newOwnerName');
-    print('  - اسم الشبكة الجديد: $newNetworkName');
-    print('  - البريد الجديد: $newEmail');
-    print('  - الهاتف الثاني الجديد: $newSecondPhone');
-    print('  - المحافظة: $newGovernorate');
-    print('  - المديرية: $newDistrict');
-    print('  - المدينة: $newCity');
-    print('  - العنوان: $newAddress');
-
-    // عرض مؤشر التحميل
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(
-        child: CircularProgressIndicator(),
-      ),
+    final success = await _authProvider.updateUserProfile(
+      name: _nameController.text.trim(),
+      ownerName: _ownerNameController.text.trim().isEmpty ? null : _ownerNameController.text.trim(),
+      networkName: _networkNameController.text.trim().isEmpty ? null : _networkNameController.text.trim(),
+      email: _emailController.text.trim().isEmpty ? null : _emailController.text.trim(),
+      secondPhone: _secondPhoneController.text.trim().isEmpty ? null : _secondPhoneController.text.trim(),
+      governorate: _governorateController.text.trim().isEmpty ? null : _governorateController.text.trim(),
+      district: _districtController.text.trim().isEmpty ? null : _districtController.text.trim(),
+      city: _cityController.text.trim().isEmpty ? null : _cityController.text.trim(),
+      address: _addressController.text.trim().isEmpty ? null : _addressController.text.trim(),
     );
-
-    // حفظ التغييرات في Firebase
-    final success = await authProvider.updateUserProfile(
-      name: newName,
-      ownerName: newOwnerName, // حفظ ownerName دائماً (posVendor يستخدمه)
-      networkName: newNetworkName,
-      email: newEmail,
-      secondPhone: newSecondPhone,
-      governorate: newGovernorate,
-      district: newDistrict,
-      city: newCity,
-      address: newAddress,
-    );
-
-    print('✅ نتيجة الحفظ: ${success ? "نجح" : "فشل"}');
-    if (!success && authProvider.error != null) {
-      print('❌ الخطأ: ${authProvider.error}');
-    }
 
     if (!mounted) return;
-    Navigator.of(context).pop(); // إغلاق مؤشر التحميل
+
+    setState(() => _isSaving = false);
 
     if (success) {
-      setState(() {
-        _isEditingProfile = false;
-      });
-
-      // تحديث الـ TextControllers لتطابق البيانات الجديدة
-      _updateControllers();
-
-      // عرض البيانات المحدثة للتأكد
-      final updatedUser = authProvider.user;
-      print('📊 البيانات بعد الحفظ:');
-      print('  - الاسم: ${updatedUser?.name}');
-      print('  - اسم الشبكة: ${updatedUser?.networkName}');
-      print('  - البريد: ${updatedUser?.email}');
-      print('  - الهاتف الثاني: ${updatedUser?.secondPhone}');
-
       CustomToast.success(
         context,
-        'تم حفظ جميع التعديلات على الملف الشخصي',
+        'تم حفظ التعديلات بنجاح',
         title: 'تم الحفظ',
       );
+      Navigator.of(context).pop();
     } else {
       CustomToast.error(
         context,
-        authProvider.error ?? 'فشل حفظ التغييرات',
+        _authProvider.error ?? 'فشل حفظ التغييرات',
         title: 'فشل الحفظ',
-      );
-    }
-  }
-
-  Future<void> _changePassword() async {
-    if (!_passwordFormKey.currentState!.validate()) return;
-
-    final authProvider = context.read<AuthProvider>();
-
-    // عرض مؤشر التحميل
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(
-        child: CircularProgressIndicator(),
-      ),
-    );
-
-    // تغيير كلمة المرور في Firebase Auth
-    final success = await authProvider.changePassword(
-      currentPassword: _currentPasswordController.text,
-      newPassword: _newPasswordController.text,
-    );
-
-    if (!mounted) return;
-    Navigator.of(context).pop(); // إغلاق مؤشر التحميل
-
-    if (success) {
-      setState(() => _isEditingPassword = false);
-
-      _currentPasswordController.clear();
-      _newPasswordController.clear();
-      _confirmPasswordController.clear();
-
-      CustomToast.success(
-        context,
-        'تم تغيير كلمة المرور بنجاح',
-        title: 'تم التحديث',
-      );
-    } else {
-      CustomToast.error(
-        context,
-        authProvider.error ?? 'فشل تغيير كلمة المرور',
-        title: 'فشل التغيير',
       );
     }
   }

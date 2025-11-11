@@ -110,92 +110,73 @@ class _NetworksPageState extends State<NetworksPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: PreferredSize(
-        // Increased height to prevent bottom overflow (was 110.h causing ~12px overflow on some devices)
-        preferredSize: Size.fromHeight(126.h),
-        child: Container(
-          decoration: BoxDecoration(
-            color: AppColors.primary,
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primary.withValues(alpha: 0.25),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: SafeArea(
-            bottom: false,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding:
-                      EdgeInsets.symmetric(horizontal: 20.w, vertical: 4.h),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'الشبكات',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 20.sp,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: _openSearch,
-                        icon: const Icon(Icons.search, color: Colors.white),
-                        tooltip: 'بحث',
-                      ),
-                    ],
-                  ),
-                ),
-                SizedBox(height: 2.h),
-                Container(
-                  margin: EdgeInsetsDirectional.only(
-                    top: 6.h,
-                    start: 12.w,
-                    end: 12.w,
-                    bottom: 8.h,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16.r),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: AppPrimaryTabBar(
-                    controller: _tabController,
-                    style: AppTabBarStyle.filledSegment,
-                    isDense: true,
-                    indicatorColor: AppColors.primary,
-                    backgroundColor: Colors.white,
-                    enableBlur: false,
-                    tabs: const [
-                      AppPrimaryTab(label: 'الشبكات'),
-                      AppPrimaryTab(label: 'الطلبات'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+      backgroundColor: const Color(0xFFF1F5F8),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFF1F5F8),
+        surfaceTintColor: const Color(0xFFF1F5F8),
+        elevation: 0,
+        titleSpacing: 20.w,
+        title: Text(
+          'الشبكات',
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 20.sp,
+            fontWeight: FontWeight.w700,
           ),
         ),
+        actions: [
+          IconButton(
+            onPressed: _openSearch,
+            icon: const Icon(Icons.search, color: AppColors.primary),
+            tooltip: 'بحث',
+          ),
+          SizedBox(width: 4.w),
+        ],
       ),
       body: Container(
-        decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
-        child: TabBarView(
-          controller: _tabController,
+        color: const Color(0xFFF1F5F8),
+        child: Column(
           children: [
-            _buildNetworksTab(),
-            _buildOrdersTab(),
+            Container(
+              margin: EdgeInsetsDirectional.only(
+                top: 12.h,
+                start: 20.w,
+                end: 20.w,
+                bottom: 12.h,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16.r),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: AppPrimaryTabBar(
+                controller: _tabController,
+                style: AppTabBarStyle.filledSegment,
+                isDense: true,
+                indicatorColor: AppColors.primary,
+                backgroundColor: Colors.white,
+                enableBlur: false,
+                tabs: const [
+                  AppPrimaryTab(label: 'الشبكات'),
+                  AppPrimaryTab(label: 'الطلبات'),
+                ],
+              ),
+            ),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildNetworksTab(),
+                  _buildOrdersTab(),
+                ],
+              ),
+            ),
           ],
         ),
       ),

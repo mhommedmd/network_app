@@ -309,31 +309,31 @@ class _SendOrderPageState extends State<SendOrderPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF1F5F8),
       appBar: AppBar(
+        backgroundColor: const Color(0xFFF1F5F8),
+        surfaceTintColor: const Color(0xFFF1F5F8),
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: AppColors.textPrimary),
         title: Text(
           _selectedNetworkName ?? 'طلب كروت',
           style: const TextStyle(
-            color: Colors.white,
+            color: AppColors.textPrimary,
             fontWeight: FontWeight.w700,
           ),
         ),
-        centerTitle: true,
-        backgroundColor: AppColors.primary,
-        surfaceTintColor: AppColors.primary,
-        iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           if (_selectedNetworkId != null)
             IconButton(
               onPressed: _selectNetwork,
-              icon: const Icon(Icons.swap_horiz),
+              icon: const Icon(Icons.swap_horiz, color: AppColors.primary),
               tooltip: 'تغيير الشبكة',
             ),
         ],
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundGradient,
-        ),
+        color: const Color(0xFFF1F5F8),
         child: _selectedNetworkId == null
             ? _buildNetworkSelection()
             : StreamBuilder<List<PackageModel>>(

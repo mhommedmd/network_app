@@ -45,7 +45,7 @@ class _AccountsPageContent extends StatefulWidget {
 
 class _AccountsPageContentState extends State<_AccountsPageContent> {
   final _searchController = TextEditingController();
-  String _searchQuery = '';
+  final String _searchQuery = '';
   String? _selectedGovernorate;
   String? _selectedDistrict;
 
@@ -128,34 +128,32 @@ class _AccountsPageContentState extends State<_AccountsPageContent> {
 
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: const Color(0xFFF5F5F5),
+        surfaceTintColor: const Color(0xFFF5F5F5),
+        elevation: 0,
         title: Text(
           'المتاجر',
           style: TextStyle(
             fontSize: 18.sp,
             fontWeight: FontWeight.w700,
-            color: Colors.white,
+            color: const Color(0xFF1C2B33),
           ),
         ),
         actions: [
           IconButton(
-            tooltip: 'بحث وإضافة متاجر',
+            tooltip: 'إضافة متجر جديد',
             onPressed: _openSearchPage,
             icon: const Icon(
               Icons.add_business,
-              color: Colors.white,
+              color: AppColors.primary,
             ),
           ),
         ],
         centerTitle: true,
-        backgroundColor: AppColors.primary,
-        surfaceTintColor: AppColors.primary,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: const IconThemeData(color: Color(0xFF1C2B33)),
       ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundGradient,
-        ),
+      body: ColoredBox(
+        color: const Color(0xFFF5F5F5),
         child: SafeArea(
           child: vendorProvider.isLoading
               ? Padding(
@@ -181,41 +179,6 @@ class _AccountsPageContentState extends State<_AccountsPageContent> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // شريط البحث المحلي (اختياري)
-                      if (vendors.isNotEmpty)
-                        Padding(
-                          padding: EdgeInsets.only(bottom: 16.h),
-                          child: TextField(
-                            controller: _searchController,
-                            textDirection: TextDirection.rtl,
-                            decoration: InputDecoration(
-                              labelText: 'بحث في المتاجر المضافة',
-                              prefixIcon: const Icon(Icons.search),
-                              suffixIcon: _searchQuery.isNotEmpty
-                                  ? IconButton(
-                                      icon: const Icon(Icons.clear),
-                                      onPressed: () {
-                                        setState(() {
-                                          _searchController.clear();
-                                          _searchQuery = '';
-                                        });
-                                      },
-                                    )
-                                  : null,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12.r),
-                              ),
-                              filled: true,
-                              fillColor: Colors.white,
-                            ),
-                            onChanged: (value) {
-                              setState(() {
-                                _searchQuery = value;
-                              });
-                            },
-                          ),
-                        ),
-
                       // قائمة المتاجر
                       Expanded(
                         child: RefreshIndicator(

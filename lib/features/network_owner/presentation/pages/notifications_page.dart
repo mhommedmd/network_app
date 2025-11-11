@@ -46,31 +46,29 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: const Color(0xFFF5F5F5),
+        surfaceTintColor: const Color(0xFFF5F5F5),
+        elevation: 0,
+        centerTitle: true,
         title: Text(
           'الإشعارات',
           style: AppTypography.subheadline.copyWith(
             fontSize: 18.sp,
             fontWeight: FontWeight.w700,
-            color: Colors.white,
+            color: const Color(0xFF1C2B33),
           ),
         ),
-        backgroundColor: AppColors.primary,
-        surfaceTintColor: AppColors.primary,
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: const IconThemeData(color: Color(0xFF1C2B33)),
         actions: [
           IconButton(
-            icon: const Icon(Icons.done_all, color: Colors.white),
+            icon: const Icon(Icons.done_all, color: Color(0xFF1C2B33)),
             onPressed: () => _markAllAsRead(userId),
             tooltip: 'تحديد الكل كمقروء',
           ),
         ],
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundGradient,
-        ),
+        color: const Color(0xFFF5F5F5),
         child: SafeArea(
           child: StreamBuilder<List<NotificationModel>>(
             stream: FirebaseNotificationService.getUserNotifications(userId),

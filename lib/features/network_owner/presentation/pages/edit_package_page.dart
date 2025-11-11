@@ -519,21 +519,21 @@ class _EditPackagePageState extends State<EditPackagePage> {
 
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: const Color(0xFFF5F5F5),
+        surfaceTintColor: const Color(0xFFF5F5F5),
+        elevation: 0,
         title: Text(
           'تعديل الباقة',
           style: TextStyle(
             fontSize: 18.sp,
             fontWeight: FontWeight.w700,
-            color: Colors.white,
+            color: const Color(0xFF1C2B33),
           ),
         ),
         centerTitle: true,
-        backgroundColor: AppColors.primary,
-        surfaceTintColor: AppColors.primary,
-        elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          color: Colors.white,
+          color: const Color(0xFF1C2B33),
           onPressed: widget.onBack,
           tooltip: 'رجوع',
         ),
@@ -543,23 +543,23 @@ class _EditPackagePageState extends State<EditPackagePage> {
             icon: Icon(
               _isActive ? Icons.pause_circle_outline : Icons.play_circle_outline,
             ),
-            color: Colors.white,
+            color: const Color(0xFF1C2B33),
             onPressed: _togglePackageStatus,
             tooltip: _isActive ? 'إيقاف الباقة' : 'تفعيل الباقة',
           ),
           // زر الحذف
           IconButton(
             icon: const Icon(Icons.delete_outline),
-            color: Colors.white,
+            color: const Color(0xFF1C2B33),
             onPressed: _deletePackage,
             tooltip: 'حذف الباقة',
           ),
         ],
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundGradient,
-        ),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF5F5F5),
+                ),
         child: SafeArea(
           child: SingleChildScrollView(
             padding: EdgeInsets.all(16.w),

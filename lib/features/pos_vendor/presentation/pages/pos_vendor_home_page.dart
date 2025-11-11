@@ -55,18 +55,18 @@ class PosVendorHomePage extends StatelessWidget {
     final userName = context.select((AuthProvider p) => p.user?.name ?? 'نقطة بيع');
 
     return Scaffold(
-      backgroundColor: AppColors.gray50,
+      backgroundColor: const Color(0xFFF1F5F8),
       appBar: PreferredSize(
         preferredSize: Size.fromHeight(72.h),
         child: Container(
           padding: EdgeInsets.only(top: 8.h),
           decoration: BoxDecoration(
-            color: AppColors.primary,
+            color: const Color(0xFFF1F5F8),
             boxShadow: [
               BoxShadow(
-                color: AppColors.primary.withValues(alpha: 0.25),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
+                color: AppColors.textPrimary.withOpacity(0.08),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
@@ -85,9 +85,15 @@ class PosVendorHomePage extends StatelessWidget {
 
                       return CircleAvatar(
                         radius: 22.w,
-                        backgroundColor: Colors.white.withValues(alpha: 0.2),
+                        backgroundColor: AppColors.primary.withValues(alpha: 0.12),
                         backgroundImage: hasValidAvatar ? NetworkImage(avatar) : null,
-                        child: hasValidAvatar ? null : Icon(Icons.person, color: Colors.white, size: 26.w),
+                        child: hasValidAvatar
+                            ? null
+                            : Icon(
+                                Icons.person,
+                                color: AppColors.primary,
+                                size: 26.w,
+                              ),
                       );
                     },
                   ),
@@ -101,7 +107,7 @@ class PosVendorHomePage extends StatelessWidget {
                         Text(
                           userName,
                           style: TextStyle(
-                            color: Colors.white,
+                            color: AppColors.textPrimary,
                             fontSize: 16.sp,
                             fontWeight: FontWeight.w600,
                           ),
@@ -112,7 +118,7 @@ class PosVendorHomePage extends StatelessWidget {
                         Text(
                           'مرحباً بك',
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.75),
+                            color: AppColors.textPrimary.withOpacity(0.6),
                             fontSize: 12.sp,
                           ),
                         ),
@@ -133,11 +139,7 @@ class PosVendorHomePage extends StatelessWidget {
                             icon: Stack(
                               clipBehavior: Clip.none,
                               children: [
-                                Icon(
-                                  Icons.notifications_none,
-                                  color: Colors.white,
-                                  size: 28.w,
-                                ),
+                                Icon(Icons.notifications_none, color: AppColors.primary, size: 28.w),
                                 if (pendingCount > 0)
                                   Positioned(
                                     top: -2,

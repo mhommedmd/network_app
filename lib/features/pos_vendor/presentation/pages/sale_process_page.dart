@@ -378,14 +378,22 @@ class _SaleProcessPageState extends State<SaleProcessPage> {
     return Directionality(
       textDirection: ui.TextDirection.rtl,
       child: Scaffold(
-        backgroundColor: AppColors.gray50,
+        backgroundColor: const Color(0xFFF1F5F8),
         appBar: AppBar(
-          title: const Text('بيع سريع'),
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
+          backgroundColor: const Color(0xFFF1F5F8),
+          surfaceTintColor: const Color(0xFFF1F5F8),
+          title: const Text(
+            'بيع سريع',
+            style: TextStyle(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          iconTheme: const IconThemeData(color: AppColors.textPrimary),
           elevation: 0,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new),
+            color: AppColors.textPrimary,
             onPressed: widget.onBack ?? () => Navigator.of(context).maybePop(),
           ),
         ),

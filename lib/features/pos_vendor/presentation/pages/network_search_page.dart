@@ -189,25 +189,24 @@ class _NetworkSearchPageState extends State<NetworkSearchPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF1F5F8),
       appBar: AppBar(
+        backgroundColor: const Color(0xFFF1F5F8),
+        surfaceTintColor: const Color(0xFFF1F5F8),
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: AppColors.textPrimary),
         title: Text(
           'البحث عن شبكات',
           style: TextStyle(
             fontSize: 18.sp,
             fontWeight: FontWeight.w700,
-            color: Colors.white,
+            color: AppColors.textPrimary,
           ),
         ),
-        centerTitle: true,
-        backgroundColor: AppColors.primary,
-        surfaceTintColor: AppColors.primary,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundGradient,
-        ),
+        color: const Color(0xFFF1F5F8),
         child: Column(
           children: [
             // منطقة البحث

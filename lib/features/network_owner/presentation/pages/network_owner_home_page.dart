@@ -101,10 +101,10 @@ class NetworkOwnerHomePage extends StatelessWidget {
         child: Container(
           padding: EdgeInsets.only(top: 8.h),
           decoration: BoxDecoration(
-            color: AppColors.primary,
+            color: const Color(0xFFF5F5F5),
             boxShadow: [
               BoxShadow(
-                color: AppColors.primary.withValues(alpha: 0.25),
+                color: const Color(0xFF1C2B33).withOpacity(0.08),
                 blurRadius: 8,
                 offset: const Offset(0, 3),
               ),
@@ -118,12 +118,12 @@ class NetworkOwnerHomePage extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     radius: 24.w,
-                    backgroundColor: Colors.white.withValues(alpha: 0.2),
+                    backgroundColor: const Color(0xFF0082FB).withOpacity(0.1),
                     backgroundImage: _isValidUrl(avatarUrl) ? NetworkImage(avatarUrl!) : null,
                     child: !_isValidUrl(avatarUrl)
                         ? Icon(
                             Icons.person,
-                            color: Colors.white,
+                            color: const Color(0xFF0082FB),
                             size: 24.w,
                           )
                         : null,
@@ -137,7 +137,7 @@ class NetworkOwnerHomePage extends StatelessWidget {
                         Text(
                           displayNetworkName,
                           style: TextStyle(
-                            color: Colors.white,
+                            color: const Color(0xFF1C2B33),
                             fontSize: 16.sp,
                             fontWeight: FontWeight.w600,
                           ),
@@ -148,7 +148,7 @@ class NetworkOwnerHomePage extends StatelessWidget {
                         Text(
                           'مرحباً، $displayOwnerName',
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.75),
+                            color: const Color(0xFF1C2B33).withOpacity(0.7),
                             fontSize: 12.sp,
                           ),
                           maxLines: 1,
@@ -170,7 +170,7 @@ class NetworkOwnerHomePage extends StatelessWidget {
                           children: [
                             Icon(
                               Icons.notifications_none,
-                              color: Colors.white,
+                              color: const Color(0xFF0082FB),
                               size: 26.w,
                             ),
                             if (unreadCount > 0)
@@ -210,9 +210,7 @@ class NetworkOwnerHomePage extends StatelessWidget {
         ),
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundGradient,
-        ),
+        color: const Color(0xFFF5F5F5),
         child: SafeArea(
           child: SingleChildScrollView(
             padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 24.h),

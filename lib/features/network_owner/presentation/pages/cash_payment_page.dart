@@ -155,25 +155,25 @@ class _NetworkCashPaymentContentState extends State<_NetworkCashPaymentContent> 
 
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: const Color(0xFFF5F5F5),
+        surfaceTintColor: const Color(0xFFF5F5F5),
+        elevation: 0,
+        centerTitle: true,
         title: Text(
           'تسجيل دفعه نقدية',
           style: AppTypography.subheadline.copyWith(
             fontSize: 18.sp,
             fontWeight: FontWeight.w700,
-            color: Colors.white,
+            color: const Color(0xFF1C2B33),
           ),
         ),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF1C2B33)),
           onPressed: widget.onBack,
         ),
-        backgroundColor: AppColors.primary,
-        surfaceTintColor: AppColors.primary,
-        elevation: 0,
-        centerTitle: true,
       ),
       body: Container(
-        decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
+        decoration: const BoxDecoration(color: Color(0xFFF5F5F5)),
         child: SafeArea(
           child: SingleChildScrollView(
             padding: EdgeInsets.all(20.w),

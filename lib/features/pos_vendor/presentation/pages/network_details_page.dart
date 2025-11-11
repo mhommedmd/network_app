@@ -133,52 +133,37 @@ class _NetworkDetailsPageState extends State<NetworkDetailsPage>
     final networkOwnerId = widget.networkOwnerId ?? widget.networkId;
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF1F5F8),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _handleSendOrder,
         backgroundColor: AppColors.primary,
         icon: const Icon(Icons.add, color: Colors.white),
         label: const Text('إرسال طلب', style: TextStyle(color: Colors.white)),
       ),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFF1F5F8),
+        surfaceTintColor: const Color(0xFFF1F5F8),
+        elevation: 0,
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+          onPressed: _handleBack,
+        ),
+        title: Text(
+          'تفاصيل الشبكة',
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 18.sp,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
       body: Container(
-        decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
+        color: const Color(0xFFF1F5F8),
         child: SafeArea(
+          top: false,
           child: Column(
             children: [
-              // Header
-              Container(
-                color: AppColors.primary,
-                padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 12.h),
-                child: Row(
-                  children: [
-                    GestureDetector(
-                      onTap: _handleBack,
-                      behavior: HitTestBehavior.opaque,
-                      child: SizedBox(
-                        width: 36.w,
-                        height: 36.w,
-                        child: Icon(
-                          Icons.arrow_back,
-                          color: Colors.white,
-                          size: 24.w,
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 12.w),
-                    Expanded(
-                      child: Text(
-                        'تفاصيل الشبكة',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18.sp,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Tabs
               Container(
                 margin: EdgeInsets.all(16.w),
                 decoration: BoxDecoration(
@@ -186,7 +171,7 @@ class _NetworkDetailsPageState extends State<NetworkDetailsPage>
                   borderRadius: BorderRadius.circular(16.r),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08),
+                      color: Colors.black.withValues(alpha: 0.06),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
@@ -205,8 +190,6 @@ class _NetworkDetailsPageState extends State<NetworkDetailsPage>
                   ],
                 ),
               ),
-
-              // Content
               Expanded(
                 child: TabBarView(
                   controller: _tabController,

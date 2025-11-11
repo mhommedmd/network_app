@@ -40,26 +40,28 @@ class _PosVendorCashPaymentsPageState extends State<PosVendorCashPaymentsPage> {
     final vendorId = _vendorId;
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF1F5F8),
       appBar: AppBar(
+        backgroundColor: const Color(0xFFF1F5F8),
+        surfaceTintColor: const Color(0xFFF1F5F8),
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: AppColors.textPrimary),
         title: Text(
           'الدفعات النقدية',
           style: AppTypography.subheadline.copyWith(
             fontSize: 18.sp,
             fontWeight: FontWeight.w700,
-            color: Colors.white,
+            color: AppColors.textPrimary,
           ),
         ),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
           onPressed: widget.onBack,
         ),
-        backgroundColor: AppColors.primary,
-        surfaceTintColor: AppColors.primary,
-        elevation: 0,
-        centerTitle: true,
       ),
       body: Container(
-        decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
+        color: const Color(0xFFF1F5F8),
         child: SafeArea(
           child: StreamBuilder<List<CashPaymentRequestModel>>(
             stream: FirebaseCashPaymentService.getVendorPaymentRequests(vendorId),

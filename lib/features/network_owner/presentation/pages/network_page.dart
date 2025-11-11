@@ -74,37 +74,24 @@ class NetworkPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final user = context.select((AuthProvider p) => p.user);
-    final registeredNetworkName = user?.networkName?.trim();
-    final registeredUserName = user?.name.trim();
-    final fallbackName = networkName?.trim().isNotEmpty ?? false ? networkName!.trim() : 'اسم الشبكة';
-
-    final displayName = registeredNetworkName != null && registeredNetworkName.isNotEmpty
-        ? registeredNetworkName
-        : registeredUserName != null && registeredUserName.isNotEmpty
-            ? registeredUserName
-            : fallbackName;
-
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: const Color(0xFFF5F5F5),
+        surfaceTintColor: const Color(0xFFF5F5F5),
+        elevation: 0,
         title: Text(
-          displayName,
+          'إدارة الشبكة',
           style: TextStyle(
-            color: Colors.white,
+            color: const Color(0xFF1C2B33),
             fontWeight: FontWeight.w700,
             fontSize: 18.sp,
           ),
         ),
         centerTitle: true,
-        backgroundColor: AppColors.primary,
-        surfaceTintColor: AppColors.primary,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
+        iconTheme: const IconThemeData(color: Color(0xFF1C2B33)),
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundGradient,
-        ),
+        color: const Color(0xFFF5F5F5),
         child: SafeArea(
           top: false,
           child: NetworkPackagesSection(
@@ -220,8 +207,6 @@ class _NetworkPackagesSectionState extends State<NetworkPackagesSection> {
             );
 
     final hasActions = widget.onAddPackage != null || widget.onImportCards != null || widget.onViewInventory != null;
-    final headerHeight = hasActions ? 156.h : 92.h;
-
     return RefreshIndicator(
       onRefresh: () async {
         _loadPackages();
@@ -231,40 +216,29 @@ class _NetworkPackagesSectionState extends State<NetworkPackagesSection> {
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
-          SliverPersistentHeader(
-            pinned: true,
-            delegate: _PackagesHeaderDelegate(
-              height: headerHeight,
-              hasActions: hasActions,
-              child: Padding(
-                padding: EdgeInsets.only(
-                  left: 20.w,
-                  right: 20.w,
-                  top: hasActions ? 20.h : 24.h,
-                  bottom: 12.h,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    if (hasActions) ...[
-                      _NetworkActionsRow(
-                        onAddPackage: widget.onAddPackage,
-                        onImportCards: widget.onImportCards,
-                        onViewInventory: inventoryTap,
-                      ),
-                      SizedBox(height: 12.h),
-                    ],
-                    Text(
-                      'الباقات',
-                      style: TextStyle(
-                        fontSize: 16.sp,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.gray900,
-                      ),
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(20.w, 20.h, 20.w, 12.h),
+            sliver: SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (hasActions) ...[
+                    _NetworkActionsRow(
+                      onAddPackage: widget.onAddPackage,
+                      onImportCards: widget.onImportCards,
+                      onViewInventory: inventoryTap,
                     ),
+                    SizedBox(height: 12.h),
                   ],
-                ),
+                  Text(
+                    'الباقات',
+                    style: TextStyle(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.gray900,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -689,10 +663,14 @@ class _NetworkOrdersPageState extends State<NetworkOrdersPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('الطلبات'),
-        backgroundColor: AppColors.primary,
-        surfaceTintColor: AppColors.primary,
-        iconTheme: const IconThemeData(color: Colors.white),
+        backgroundColor: const Color(0xFFF5F5F5),
+        surfaceTintColor: const Color(0xFFF5F5F5),
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Color(0xFF1C2B33)),
+        title: const Text(
+          'الطلبات',
+          style: TextStyle(color: Color(0xFF1C2B33)),
+        ),
       ),
       body: networkId.isEmpty
           ? const Center(child: Text('معلومات الشبكة غير متوفرة'))
@@ -855,38 +833,5 @@ class _RealTimePackageCard extends StatelessWidget {
       debugPrint('⚠️ Error parsing icon: $e');
       return null;
     }
-  }
-}
-
-class _PackagesHeaderDelegate extends SliverPersistentHeaderDelegate {
-  _PackagesHeaderDelegate({
-    required this.height,
-    required this.child,
-    required this.hasActions,
-  });
-
-  final double height;
-  final Widget child;
-  final bool hasActions;
-
-  @override
-  double get minExtent => height;
-
-  @override
-  double get maxExtent => height;
-
-  @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: AppColors.backgroundGradient,
-      ),
-      child: child,
-    );
-  }
-
-  @override
-  bool shouldRebuild(covariant _PackagesHeaderDelegate oldDelegate) {
-    return oldDelegate.height != height || oldDelegate.hasActions != hasActions;
   }
 }

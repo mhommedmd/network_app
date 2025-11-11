@@ -42,38 +42,51 @@ class _PosVendorNotificationsPageState
 
     if (userId.isEmpty) {
       return Scaffold(
-        appBar: AppBar(title: const Text('الإشعارات')),
+        backgroundColor: const Color(0xFFF1F5F8),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFFF1F5F8),
+          surfaceTintColor: const Color(0xFFF1F5F8),
+          elevation: 0,
+          title: Text(
+            'الإشعارات',
+            style: TextStyle(
+              fontSize: 18.sp,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          centerTitle: true,
+        ),
         body: const Center(child: Text('يرجى تسجيل الدخول')),
       );
     }
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF1F5F8),
       appBar: AppBar(
+        backgroundColor: const Color(0xFFF1F5F8),
+        surfaceTintColor: const Color(0xFFF1F5F8),
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: AppColors.textPrimary),
         title: Text(
           'الإشعارات',
           style: TextStyle(
             fontSize: 18.sp,
             fontWeight: FontWeight.w700,
-            color: Colors.white,
+            color: AppColors.textPrimary,
           ),
         ),
-        backgroundColor: AppColors.primary,
-        surfaceTintColor: AppColors.primary,
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           IconButton(
-            icon: const Icon(Icons.done_all, color: Colors.white),
+            icon: const Icon(Icons.done_all, color: AppColors.primary),
             onPressed: () => _markAllAsRead(userId),
             tooltip: 'تحديد الكل كمقروء',
           ),
         ],
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: AppColors.backgroundGradient,
-        ),
+        color: const Color(0xFFF1F5F8),
         child: SafeArea(
           child: StreamBuilder<List<NotificationModel>>(
             stream: FirebaseNotificationService.getUserNotifications(userId),

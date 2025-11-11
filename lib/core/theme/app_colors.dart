@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  // Primary Colors (Blue theme)
-  static const Color primary = Color(0xFF2563EB); // blue-600
-  static const Color primaryLight = Color(0xFF3B82F6); // blue-500
-  static const Color primaryDark = Color(0xFF1D4ED8); // blue-700
+  // Primary Colors
+  static const Color primary = Color(0xFF0082FB);
+  static const Color primaryLight = Color(0xFF4DA6FF);
+  static const Color primaryDark = Color(0xFF0064E0);
 
   // Secondary Colors
-  static const Color secondary = Color(0xFF6366F1); // indigo-500
-  static const Color secondaryLight = Color(0xFF8B5CF6); // violet-500
-  static const Color secondaryDark = Color(0xFF4338CA); // indigo-700
+  static const Color secondary = Color(0xFF0064E0);
+  static const Color secondaryLight = Color(0xFF3389FF);
+  static const Color secondaryDark = Color(0xFF004BB8);
+
+  // Text Colors
+  static const Color textPrimary = Color(0xFF1C2B33);
 
   // Status Colors
   static const Color success = Color(0xFF059669); // emerald-600
@@ -30,52 +33,52 @@ class AppColors {
   static const Color infoDark = Color(0xFF0369A1); // sky-700
 
   // Gray Scale with blue undertones
-  static const Color gray50 = Color(0xFFF8FAFC);
-  static const Color gray100 = Color(0xFFF1F5F9);
-  static const Color gray200 = Color(0xFFE2E8F0);
-  static const Color gray300 = Color(0xFFCBD5E1);
-  static const Color gray400 = Color(0xFF94A3B8);
-  static const Color gray500 = Color(0xFF64748B);
-  static const Color gray600 = Color(0xFF475569);
-  static const Color gray700 = Color(0xFF334155);
-  static const Color gray800 = Color(0xFF1E293B);
-  static const Color gray900 = Color(0xFF0F172A);
+  static const Color gray50 = Color(0xFFF5F7FA);
+  static const Color gray100 = Color(0xFFEFF2F6);
+  static const Color gray200 = Color(0xFFE0E6EC);
+  static const Color gray300 = Color(0xFFCAD4DD);
+  static const Color gray400 = textPrimary;
+  static const Color gray500 = textPrimary;
+  static const Color gray600 = textPrimary;
+  static const Color gray700 = textPrimary;
+  static const Color gray800 = textPrimary;
+  static const Color gray900 = textPrimary;
 
   // Blue variants
-  static const Color blue50 = Color(0xFFEFF6FF);
-  static const Color blue100 = Color(0xFFDBEAFE);
-  static const Color blue200 = Color(0xFFBFDBFE);
-  static const Color blue300 = Color(0xFF93C5FD);
-  static const Color blue400 = Color(0xFF60A5FA);
-  static const Color blue500 = Color(0xFF3B82F6);
-  static const Color blue600 = Color(0xFF2563EB);
-  static const Color blue700 = Color(0xFF1D4ED8);
-  static const Color blue800 = Color(0xFF1E40AF);
-  static const Color blue900 = Color(0xFF1E3A8A);
+  static const Color blue50 = Color(0xFFE5F2FF);
+  static const Color blue100 = Color(0xFFCCE6FF);
+  static const Color blue200 = Color(0xFF99CDFF);
+  static const Color blue300 = Color(0xFF66B4FF);
+  static const Color blue400 = Color(0xFF33A0FF);
+  static const Color blue500 = primary;
+  static const Color blue600 = primaryDark;
+  static const Color blue700 = Color(0xFF0057C0);
+  static const Color blue800 = Color(0xFF004899);
+  static const Color blue900 = Color(0xFF003B7A);
 
   // Indigo variants
-  static const Color indigo50 = Color(0xFFEEF2FF);
-  static const Color indigo100 = Color(0xFFE0E7FF);
-  static const Color indigo200 = Color(0xFFC7D2FE);
-  static const Color indigo300 = Color(0xFFA5B4FC);
-  static const Color indigo400 = Color(0xFF818CF8);
-  static const Color indigo500 = Color(0xFF6366F1);
-  static const Color indigo600 = Color(0xFF4F46E5);
-  static const Color indigo700 = Color(0xFF4338CA);
-  static const Color indigo800 = Color(0xFF3730A3);
-  static const Color indigo900 = Color(0xFF312E81);
+  static const Color indigo50 = Color(0xFFE7F0FF);
+  static const Color indigo100 = Color(0xFFD1E0FF);
+  static const Color indigo200 = Color(0xFFA3C1FF);
+  static const Color indigo300 = Color(0xFF75A1FF);
+  static const Color indigo400 = Color(0xFF4782FF);
+  static const Color indigo500 = secondary;
+  static const Color indigo600 = secondaryDark;
+  static const Color indigo700 = Color(0xFF003F99);
+  static const Color indigo800 = Color(0xFF003580);
+  static const Color indigo900 = Color(0xFF002966);
 
   // Gradients
   static const LinearGradient primaryGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [blue600, blue700],
+    colors: [blue500, blue700],
   );
 
   static const LinearGradient secondaryGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [indigo500, indigo600],
+    colors: [secondary, secondaryDark],
   );
 
   static const LinearGradient successGradient = LinearGradient(
@@ -118,7 +121,7 @@ class AppColors {
     error: error,
     onError: Colors.white,
     surface: Colors.white,
-    onSurface: gray900,
+    onSurface: textPrimary,
     outline: gray300,
     shadow: Color(0x1A000000),
   );
@@ -126,9 +129,9 @@ class AppColors {
   // Dark Color Scheme
   static const ColorScheme darkColorScheme = ColorScheme(
     brightness: Brightness.dark,
-    primary: primaryLight,
+    primary: primary,
     onPrimary: Colors.white,
-    secondary: secondaryLight,
+    secondary: secondary,
     onSecondary: Colors.white,
     error: errorLight,
     onError: Colors.white,
